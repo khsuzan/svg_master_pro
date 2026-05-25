@@ -4,36 +4,16 @@ import CodePanel from './components/CodePanel'
 import Canvas from './components/Canvas'
 import ContextMenu from './components/ContextMenu'
 import GroupModal from './components/GroupModal'
+import ArtboardModal from './components/ArtboardModal'
 import { setElementAttributes } from './utils/domUtils'
-import { serializeContainer } from './utils/serializer'
+import { serializeContainer, prettyPrint, minifyHtml, isPrettified } from './utils/serializer'
 import './App.css'
 
-const DEFAULT_CODE = `<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
-  <rect x="10" y="10" width="180" height="80" rx="8" fill="#6366f1" />
-  <circle cx="300" cy="150" r="60" fill="#ec4899" />
-  <ellipse cx="500" cy="120" rx="80" ry="40" fill="#14b8a6" />
-  <line x1="100" y1="300" x2="300" y2="400" stroke="#f59e0b" stroke-width="4" />
-  <polyline points="400,300 500,350 450,420 550,380" fill="none" stroke="#8b5cf6" stroke-width="3" />
-  <polygon points="150,450 250,550 50,550" fill="#ef4444" />
-  <path d="M600,100 C620,50 680,50 700,100 C720,150 680,200 650,200 C620,200 580,150 600,100Z" fill="#3b82f6" />
-
-  <g id="logo-group" fill="#a855f7">
-    <rect x="50" y="50" width="40" height="40" rx="6" />
-    <rect x="100" y="50" width="40" height="40" rx="6" />
-    <rect x="50" y="100" width="40" height="40" rx="6" />
-  </g>
-
-  <g id="icon-set" transform="translate(350, 250)">
-    <circle cx="0" cy="0" r="20" fill="#10b981" />
-    <g id="sub-group" transform="translate(60, 0)">
-      <rect x="-15" y="-15" width="30" height="30" rx="4" fill="#f97316" />
-      <path d="M-8,-8 L8,-8 L0,8Z" fill="#fff" opacity="0.6" />
-    </g>
-  </g>
-
-  <text x="400" y="550" text-anchor="middle" font-size="20" font-family="system-ui" fill="#6b7280">
-    Drag to marquee select — only deepest leaf nodes are selected
-  </text>
+const DEFAULT_CODE = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 124 124" fill="none">
+<rect width="124" height="124" rx="24" fill="#F97316"/>
+<path d="M19.375 36.7818V100.625C19.375 102.834 21.1659 104.625 23.375 104.625H87.2181C90.7818 104.625 92.5664 100.316 90.0466 97.7966L26.2034 33.9534C23.6836 31.4336 19.375 33.2182 19.375 36.7818Z" fill="white"/>
+<circle cx="63.2109" cy="37.5391" r="18.1641" fill="black"/>
+<rect opacity="0.4" x="81.1328" y="80.7198" width="17.5687" height="17.3876" rx="4" transform="rotate(-45 81.1328 80.7198)" fill="#FDBA74"/>
 </svg>`
 
 export default function App() {
@@ -42,14 +22,22 @@ export default function App() {
   const [selectedCount, setSelectedCount] = useState(0)
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, hasSelection: false })
   const [groupModal, setGroupModal] = useState({ visible: false, target: null })
+  const [codePanelVisible, setCodePanelVisible] = useState(true)
+  const [selectedElement, setSelectedElement] = useState(null)
+  const [artboardModal, setArtboardModal] = useState({ visible: false })
+  const [parsing, setParsing] = useState(false)
 
   const selectedRefs = useRef(new Set())
   const clipboardRef = useRef([])
   const [clipboardSize, setClipboardSize] = useState(0)
   const actionsRef = useRef(null)
+  const codePanelRef = useRef(null)
+  const codePrettified = isPrettified(htmlCode)
 
   const handleCodeChange = useCallback((newCode) => {
     setHtmlCode(newCode)
+    setParsing(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => setParsing(false)))
   }, [])
 
   const handleToolChange = useCallback((tool) => {
@@ -65,8 +53,8 @@ export default function App() {
     setClipboardSize(size)
   }, [])
 
-  const handleOpenContextMenu = useCallback((x, y, target, desc, hasSelection) => {
-    setContextMenu({ visible: true, x, y, target, desc, hasSelection })
+  const handleOpenContextMenu = useCallback((x, y, target, desc, hasSelection, isEmptyClick) => {
+    setContextMenu({ visible: true, x, y, target, desc, hasSelection, isEmptyClick })
   }, [])
 
   const handleCloseContextMenu = useCallback(() => {
@@ -81,6 +69,29 @@ export default function App() {
     setGroupModal({ visible: false, target: null })
   }, [])
 
+  const handleCodeSelectElement = useCallback((arg1, arg2) => {
+    if (typeof arg2 === 'number') {
+      actionsRef.current?.selectAtCursorPos(arg1, arg2)
+    } else if (typeof arg1 === 'string') {
+      actionsRef.current?.selectByOuterHTML(arg1)
+    }
+  }, [])
+
+  const handleCanvasSize = useCallback(() => {
+    setArtboardModal({ visible: true })
+    setContextMenu((prev) => ({ ...prev, visible: false }))
+  }, [])
+
+  const handleSaveArtboard = useCallback((updatedHtml) => {
+    setHtmlCode(updatedHtml)
+    setParsing(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => setParsing(false)))
+    const container = document.querySelector('.canvas-content')
+    if (container) {
+      container.innerHTML = updatedHtml
+    }
+  }, [])
+
   const handleSaveGroupAttributes = useCallback((target, attrs) => {
     setElementAttributes(target, attrs)
     const container = document.querySelector('.canvas-content')
@@ -89,6 +100,38 @@ export default function App() {
       setHtmlCode(newHtml)
     }
   }, [])
+
+  const handleSelectionUpdate = useCallback((selectedSet) => {
+    if (!selectedSet || selectedSet.size === 0) {
+      setSelectedElement(null)
+      return
+    }
+    const els = Array.from(selectedSet).filter(el => document.contains(el))
+    if (els.length === 0) {
+      setSelectedElement(null)
+      return
+    }
+    setSelectedElement(els[0])
+    if (els.length === 1) {
+      codePanelRef.current?.selectCodeInEditor(els[0].outerHTML)
+    } else {
+      els.sort((a, b) => {
+        const pos = a.compareDocumentPosition(b)
+        if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1
+        if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1
+        return 0
+      })
+      codePanelRef.current?.selectRange(els.map(el => el.outerHTML))
+    }
+  }, [])
+
+  const handleToggleCodePanel = useCallback(() => {
+    setCodePanelVisible((v) => !v)
+  }, [])
+
+  const toolHint = activeTool === 'select' ? 'Click to select · Drag to marquee'
+    : activeTool === 'path-select' ? 'Click to select path elements'
+    : activeTool === 'zoom' ? 'Scroll to zoom · Ctrl+click to zoom out' : ''
 
   const callAction = useCallback((name, ...args) => {
     if (actionsRef.current && actionsRef.current[name]) {
@@ -104,16 +147,33 @@ export default function App() {
   const performGroup = useCallback(() => callAction('performGroup'), [callAction])
   const performCleanEmptyGroups = useCallback(() => callAction('cleanEmptyGroups'), [callAction])
 
+  const performToggleFormat = useCallback(() => {
+    const result = codePrettified ? minifyHtml(htmlCode) : prettyPrint(htmlCode)
+    setHtmlCode(result)
+    setParsing(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => setParsing(false)))
+    const container = document.querySelector('.canvas-content')
+    if (container) {
+      container.innerHTML = result
+    }
+  }, [htmlCode, codePrettified])
+
   return (
     <div className="app">
       <div className="workspace">
-        <div className="panel panel-left">
-          <CodePanel
-            value={htmlCode}
-            onChange={handleCodeChange}
-          />
-        </div>
-        <div className="panel panel-right">
+        {codePanelVisible && (
+          <div className="panel panel-left">
+            <CodePanel
+              ref={codePanelRef}
+              value={htmlCode}
+              onChange={handleCodeChange}
+              selectedElement={selectedElement}
+              onCodeSelectElement={handleCodeSelectElement}
+              hint={toolHint}
+            />
+          </div>
+        )}
+        <div className={`panel panel-right ${!codePanelVisible ? 'panel-full' : ''}`}>
           <Canvas
             htmlCode={htmlCode}
             onCodeChange={handleCodeChange}
@@ -125,6 +185,10 @@ export default function App() {
             clipboardRef={clipboardRef}
             actionsRef={actionsRef}
             onClipboardChange={handleClipboardChange}
+            onSelectionUpdate={handleSelectionUpdate}
+            onToggleCodePanel={handleToggleCodePanel}
+            codePanelVisible={codePanelVisible}
+            parsing={parsing}
           />
         </div>
       </div>
@@ -140,6 +204,8 @@ export default function App() {
         onPaste={performPaste}
         onGroup={performGroup}
         onCleanEmptyGroups={performCleanEmptyGroups}
+        onToggleFormat={performToggleFormat}
+        codePrettified={codePrettified}
         canDelete={selectedCount > 0}
         canExtract={selectedCount > 0}
         canCopy={selectedCount > 0}
@@ -152,6 +218,7 @@ export default function App() {
         x={contextMenu.x}
         y={contextMenu.y}
         hasSelection={contextMenu.hasSelection || selectedCount > 0}
+        isEmptyClick={contextMenu.isEmptyClick}
         onClose={handleCloseContextMenu}
         onDelete={performDelete}
         onGroup={performGroup}
@@ -159,6 +226,7 @@ export default function App() {
         onCut={performCut}
         onPaste={performPaste}
         onExtract={performExtract}
+        onCanvasSize={handleCanvasSize}
         clipboardSize={clipboardSize}
       />
 
@@ -167,6 +235,13 @@ export default function App() {
         target={groupModal.target}
         onClose={handleCloseGroupModal}
         onSave={handleSaveGroupAttributes}
+      />
+
+      <ArtboardModal
+        visible={artboardModal.visible}
+        htmlCode={htmlCode}
+        onClose={() => setArtboardModal({ visible: false })}
+        onSave={handleSaveArtboard}
       />
     </div>
   )

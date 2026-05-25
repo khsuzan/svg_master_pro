@@ -38,3 +38,20 @@ export function prettyPrint(html) {
 
   return lines.join('\n')
 }
+
+export function minifyHtml(html) {
+  return html
+    .replace(/>\s+</g, '><')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/>\s+/g, '>')
+    .replace(/\s+</g, '<')
+    .replace(/<!--.*?-->/gs, '')
+    .trim()
+}
+
+export function isPrettified(html) {
+  const lines = html.trim().split('\n')
+  if (lines.length <= 1) return false
+  const indentCount = lines.filter(l => l.startsWith(' ') || l.startsWith('\t')).length
+  return indentCount > lines.length * 0.3
+}

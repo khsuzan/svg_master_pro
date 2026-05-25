@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 
 const COMMON_EVENTS = [
   'onclick', 'onmousedown', 'onmouseup', 'onmousemove',
