@@ -75,6 +75,7 @@ function Canvas({
   const draggingRef = useRef(false)
   const dragStart = useRef(null)
   const draggedRef = useRef(false)
+  const clickedElementRef = useRef(null)
   const [overlays, setOverlays] = useState([])
   const onMoveRef = useRef(null)
   const onUpRef = useRef(null)
@@ -91,15 +92,31 @@ function Canvas({
       el.removeAttribute('data-marq-selected')
       el.style.removeProperty('outline')
       el.style.removeProperty('outline-offset')
+      if (activeTool === 'path-select') {
+        el.style.removeProperty('stroke')
+        el.style.removeProperty('stroke-width')
+        el.style.removeProperty('stroke-linecap')
+        el.style.removeProperty('stroke-linejoin')
+        el.style.removeProperty('fill')
+      }
     })
     selectedRefs.current.forEach((el) => {
       if (document.contains(el)) {
         el.setAttribute('data-marq-selected', '')
-        el.style.outline = `2px solid ${SELECTION_COLOR}`
-        el.style.outlineOffset = '-1px'
+        if (activeTool === 'path-select') {
+          el.style.removeProperty('outline')
+          el.style.stroke = SELECTION_COLOR
+          el.style.strokeWidth = '2px'
+          el.style.strokeLinecap = 'round'
+          el.style.strokeLinejoin = 'round'
+          el.style.fill = 'rgba(0, 153, 255, 0.2)'
+        } else {
+          el.style.outline = `2px solid ${SELECTION_COLOR}`
+          el.style.outlineOffset = '-1px'
+        }
       }
     })
-  }, [selectedRefs])
+  }, [selectedRefs, activeTool])
 
   const updateOverlayPositions = useCallback(() => {
     if (!containerRef.current) return
@@ -416,6 +433,7 @@ function Canvas({
     draggingRef.current = true
     setDragging(true)
     draggedRef.current = false
+    clickedElementRef.current = e.target
     setMarqueeStyle({
       left: e.clientX,
       top: e.clientY,
@@ -438,13 +456,8 @@ function Canvas({
     }
     if (effectiveTool === 'zoom') return
     if (effectiveTool === 'select') {
-      if (isLeafElement(target)) {
-        selectElement(target, e.shiftKey)
+      if (isLeafElement(target) || target.tagName.toLowerCase() === 'g' || isGroupElement(target)) {
         startDrag(e)
-      } else if (target.tagName.toLowerCase() === 'g') {
-        onOpenGroupModal(target)
-      } else if (isGroupElement(target)) {
-        onOpenGroupModal(target)
       } else {
         clearSelection()
         startDrag(e)
@@ -466,7 +479,16 @@ function Canvas({
         syncToEditor()
       }
     }
-  }, [effectiveTool, selectElement, clearSelection, syncToEditor, onOpenGroupModal, selectedRefs, onSelectionChange, applySelectionStyles, updateOverlayPositions])
+  }, [effectiveTool, selectElement, clearSelection, syncToEditor, selectedRefs, onSelectionChange, applySelectionStyles, updateOverlayPositions])
+
+  const handleDoubleClick = useCallback((e) => {
+    if (effectiveTool === 'select') {
+      const target = e.target
+      if (isLeafElement(target) || target.tagName.toLowerCase() === 'g' || isGroupElement(target)) {
+        onOpenGroupModal(target)
+      }
+    }
+  }, [effectiveTool, onOpenGroupModal])
 
   const handleMouseMove = useCallback((e) => {
     if (!draggingRef.current || !dragStart.current || !containerRef.current) return
@@ -506,6 +528,22 @@ function Canvas({
 
   const handleMouseUp = useCallback(() => {
     if (!draggingRef.current) return
+
+    const clickedElement = clickedElementRef.current
+
+    // If no meaningful drag happened, select the clicked element
+    if (!draggedRef.current && clickedElement) {
+      if (effectiveTool === 'select') {
+        selectedRefs.current.clear()
+        selectedRefs.current.add(clickedElement)
+        onSelectionChange(selectedRefs.current.size)
+        onSelectionUpdate?.(selectedRefs.current)
+        applySelectionStyles()
+        updateOverlayPositions()
+      }
+      clickedElementRef.current = null
+    }
+
     draggingRef.current = false
     setDragging(false)
     setMarqueeStyle(null)
@@ -513,7 +551,7 @@ function Canvas({
     draggedRef.current = false
     window.removeEventListener('mousemove', stableMouseMove)
     window.removeEventListener('mouseup', stableMouseUp)
-  }, [stableMouseMove, stableMouseUp])
+  }, [effectiveTool, selectedRefs, onSelectionChange, onSelectionUpdate, applySelectionStyles, updateOverlayPositions, stableMouseMove, stableMouseUp])
 
   const zoomReset = useCallback(() => setZoom(1), [])
 
@@ -599,6 +637,7 @@ function Canvas({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onContextMenu={handleContextMenu}
+            onDoubleClick={handleDoubleClick}
           >
             <div className="canvas-selection-layer">
               {overlays.map((o, i) => (

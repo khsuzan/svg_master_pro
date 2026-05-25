@@ -12,6 +12,7 @@ export default function Toolbar({
   onGroup,
   onCleanEmptyGroups,
   onToggleFormat,
+  onClearSelections,
   codePrettified,
   canDelete,
   canExtract,
@@ -37,10 +38,16 @@ export default function Toolbar({
       label: 'Path Select',
       shortcut: 'P',
       icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z" />
-          <path d="M2 17l10 5 10-5" />
-          <path d="M2 12l10 5 10-5" />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9C4.10457 9 5 8.10457 5 7C5 5.89543 4.10457 5 3 5C1.89543 5 1 5.89543 1 7C1 8.10457 1.89543 9 3 9Z" />
+          <path d="M21 9C22.1046 9 23 8.10457 23 7C23 5.89543 22.1046 5 21 5C19.8954 5 19 5.89543 19 7C19 8.10457 19.8954 9 21 9Z" />
+          <path d="M19 7H15" />
+          <path d="M9 7H5" />
+          <path d="M7.5 16.5V18.5C7.5 19.11 7.13 19.64 6.61 19.86C6.42 19.95 6.22 20 6 20H4C3.17 20 2.5 19.33 2.5 18.5V16.5C2.5 15.67 3.17 15 4 15H6C6.83 15 7.5 15.67 7.5 16.5Z" />
+          <path d="M21.5 16.5V18.5C21.5 19.33 20.83 20 20 20H18C17.78 20 17.58 19.95 17.39 19.86C16.87 19.64 16.5 19.11 16.5 18.5V16.5C16.5 15.67 17.17 15 18 15H20C20.83 15 21.5 15.67 21.5 16.5Z" />
+          <path d="M15 5.5V8.5C15 9.32 14.32 10 13.5 10H10.5C9.68 10 9 9.32 9 8.5V5.5C9 4.68 9.68 4 10.5 4H13.5C14.32 4 15 4.68 15 5.5Z" />
+          <path d="M15 7.72998C17.37 8.92998 19 11.51 19 14.5C19 14.67 18.99 14.83 18.97 15" />
+          <path d="M5.03 15C5.01 14.83 5 14.67 5 14.5C5 11.51 6.63 8.92998 9 7.72998" />
         </svg>
       ),
     },
@@ -84,49 +91,6 @@ export default function Toolbar({
               {tool.icon}
             </button>
           ))}
-
-          <div className="toolbar-floating-sep" />
-
-          <div className="toolbar-select-wrapper">
-            <button
-              className="tool-floating-btn"
-              onClick={() => setSelectOpen(!selectOpen)}
-              title="Select element at cursor"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="16" x2="12" y2="12"/>
-                <line x1="12" y1="8" x2="12.01" y2="8"/>
-              </svg>
-            </button>
-            {selectOpen && (
-              <>
-                <div className="toolbar-dropdown-backdrop" onClick={() => setSelectOpen(false)} />
-                <div className="toolbar-dropdown">
-                  <button className="toolbar-dropdown-item" onClick={() => { onCodeSelectAction?.('select'); setSelectOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    This Tag
-                  </button>
-                  <button className="toolbar-dropdown-item" onClick={() => { onCodeSelectAction?.('parent'); setSelectOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
-                    Parent Group
-                  </button>
-                  <button className="toolbar-dropdown-item" onClick={() => { onCodeSelectAction?.('children'); setSelectOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-                    Children
-                  </button>
-                  <button className="toolbar-dropdown-item" onClick={() => { onCodeSelectAction?.('siblings'); setSelectOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                    Siblings
-                  </button>
-                  <button className="toolbar-dropdown-item" onClick={() => { onCodeSelectAction?.('tag'); setSelectOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                    All Same Type
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
 
           <div className="toolbar-floating-sep" />
 
@@ -240,7 +204,24 @@ export default function Toolbar({
       {(selectedCount > 0 || clipboardSize > 0) && (
         <div className="toolbar-status-bar">
           {selectedCount > 0 && (
-            <span className="selection-count">{selectedCount} selected</span>
+            <span className="selection-count">
+              {selectedCount} selected
+              <button
+                className="clear-selections-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (window.confirm('Clear all selections?')) {
+                    onClearSelections()
+                  }
+                }}
+                title="Clear all selections"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </span>
           )}
           {clipboardSize > 0 && (
             <span className="clipboard-indicator">{clipboardSize} in clipboard</span>

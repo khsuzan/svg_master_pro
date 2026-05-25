@@ -158,6 +158,11 @@ export default function App() {
     }
   }, [htmlCode, codePrettified])
 
+  const performClearSelections = useCallback(() => {
+    callAction('clearSelections')
+    setSelectedCount(0)
+  }, [callAction])
+
   return (
     <div className="app">
       <div className="workspace">
@@ -205,6 +210,7 @@ export default function App() {
         onGroup={performGroup}
         onCleanEmptyGroups={performCleanEmptyGroups}
         onToggleFormat={performToggleFormat}
+        onClearSelections={performClearSelections}
         codePrettified={codePrettified}
         canDelete={selectedCount > 0}
         canExtract={selectedCount > 0}
