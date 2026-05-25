@@ -1,0 +1,135 @@
+/* svg root css [START] */
+
+.st0 {
+    fill: #FFFFFF;
+}
+
+.st1 {
+    stroke: #000000;
+    stroke-width: 3;
+    stroke-miterlimit: 10;
+}
+
+.st2 {
+    fill: #221F1F;
+}
+
+.st3 {
+    fill: #231F20;
+}
+
+.st4 {
+    fill: none;
+    stroke: #231F20;
+    stroke-width: 2;
+    stroke-miterlimit: 10;
+}
+
+.st5 {
+    fill: none;
+}
+
+.st6 {
+    fill: #FFFFFF;
+    stroke: #000000;
+    stroke-miterlimit: 10;
+    opacity: 0;
+}
+
+.st7 {
+    font-family: 'Arial-BoldMT';
+}
+
+.st8 {
+    font-size: 32.0027px;
+}
+
+svg>text {
+    font-family: 'MyriadPro-Regular';
+    font-size: 6;
+}
+
+/* Main div css */
+
+.diagram-box {
+    width: 900px;
+    /*  Main div width */
+    height: auto;
+    /*  Main div height */
+    position:relative;
+    margin: 0 auto;
+}
+
+
+/* svg all clickable link pointer */
+
+svg>a>g {
+    cursor: pointer;
+}
+
+
+/* svg all path background color css */
+
+svg>g>a>g .st0 {
+    fill: #ffffff;
+}
+
+
+
+
+/* svg all path hover background color css */
+
+svg a:hover g .st0 {
+    fill: #7bd6ef;
+}
+
+svg a:hover .st0 {
+    fill: #7bd6ef;
+}
+svg a:hover .stts {
+    fill: #7bd6ef;
+}
+
+/* svg all text css */
+
+.maptext {
+    font-family: 'MyriadPro-Regular';
+    font-size: 6;
+}
+
+
+/* tooltip css code [START]  */
+
+#tooltip {
+    width: auto;
+    background-color: black;
+    /* popup background color*/
+    color: #fff;
+    /* popup text color*/
+    text-align: center;
+    border-radius: 6px;
+    padding: 7px;
+}
+
+#tooltip::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    margin-top: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent black transparent transparent;
+}
+
+.textcl {
+    display: none;
+}
+
+@media screen and (max-width: 899px){
+    .diagram-box{width:100%; } 
+}
+/* tooltip css code [END]  */
+
+/* svg css [END] */
+ 
