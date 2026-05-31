@@ -1,7 +1,7 @@
 {
   "name": "svg-master-pro",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",

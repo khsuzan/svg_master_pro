@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/khsuzan/svg_master_pro/releases">
-    <img src="https://img.shields.io/badge/version-v1.0.0-f97316?style=for-the-badge&logo=semver" alt="Version" />
+    <img src="https://img.shields.io/badge/version-v1.0.4-f97316?style=for-the-badge&logo=semver" alt="Version" />
   </a>
   <a href="https://github.com/khsuzan/svg_master_pro">
     <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License" />
