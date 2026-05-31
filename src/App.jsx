@@ -1,19 +1,35 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { saveState, loadState } from './utils/storage'
 import Toolbar from './components/Toolbar'
 import CodePanel from './components/CodePanel'
 import Canvas from './components/Canvas'
 import ContextMenu from './components/ContextMenu'
 import GroupModal from './components/GroupModal'
 import ArtboardModal from './components/ArtboardModal'
+import ConfirmModal from './components/ConfirmModal'
 import { setElementAttributes } from './utils/domUtils'
-import { serializeContainer, prettyPrint, minifyHtml, isPrettified } from './utils/serializer'
+import { serializeContainer, prettyPrint, minifyHtml, isPrettified, stripSelectionMarkers } from './utils/serializer'
+import { updateSvgAttrs } from './components/ArtboardModal'
 import './App.css'
 
-const DEFAULT_CODE = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 124 124" fill="none">
-<rect width="124" height="124" rx="24" fill="#F97316"/>
-<path d="M19.375 36.7818V100.625C19.375 102.834 21.1659 104.625 23.375 104.625H87.2181C90.7818 104.625 92.5664 100.316 90.0466 97.7966L26.2034 33.9534C23.6836 31.4336 19.375 33.2182 19.375 36.7818Z" fill="white"/>
-<circle cx="63.2109" cy="37.5391" r="18.1641" fill="black"/>
-<rect opacity="0.4" x="81.1328" y="80.7198" width="17.5687" height="17.3876" rx="4" transform="rotate(-45 81.1328 80.7198)" fill="#FDBA74"/>
+const DEFAULT_CODE = `<svg width="1024" height="512" viewBox="0 0 1024 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g id="Frame 2">
+    <rect width="1024" height="512" fill="white"/>
+    <g id="Group 2">
+      <path id="Vector" d="M405.333 234.667L288 352L224 288L277.333 234.667H405.333Z" fill="#40C4FF"/>
+      <path id="Vector_2" d="M405.333 469.333H277.333L224 416L288 352L405.333 469.333Z" fill="#01579B"/>
+      <path id="Vector_3" d="M223.991 288.002L159.995 352.001L223.994 415.998L287.99 351.999L223.991 288.002Z" fill="#03A9F4"/>
+      <path id="Vector_4" d="M224 416L320 384L288 352L224 416Z" fill="#084994"/>
+      <path id="Vector_5" d="M277.333 42.6667L64 256L128 320L405.333 42.6667H277.333Z" fill="#40C4FF"/>
+    </g>
+    <g id="Group 1">
+      <path id="Vector_6" d="M618.667 234.667L736 352L800 288L746.667 234.667H618.667Z" fill="#40C4FF"/>
+      <path id="Vector_7" d="M618.667 469.333H746.667L800 416L736 352L618.667 469.333Z" fill="#01579B"/>
+      <path id="Vector_8" d="M800.009 288.002L864.005 352.001L800.006 415.998L736.01 351.999L800.009 288.002Z" fill="#03A9F4"/>
+      <path id="Vector_9" d="M800 416L704 384L736 352L800 416Z" fill="#084994"/>
+      <path id="Vector_10" d="M746.667 42.6667L960 256L896 320L618.667 42.6667H746.667Z" fill="#40C4FF"/>
+    </g>
+  </g>
 </svg>`
 
 export default function App() {
@@ -26,6 +42,19 @@ export default function App() {
   const [selectedElement, setSelectedElement] = useState(null)
   const [artboardModal, setArtboardModal] = useState({ visible: false })
   const [parsing, setParsing] = useState(false)
+  const [pathTagFilter, setPathTagFilter] = useState('any')
+  const [visualCssEnabled, setVisualCssEnabled] = useState(false)
+  const [cssContent, setCssContent] = useState('')
+  const [cssModalOpen, setCssModalOpen] = useState(false)
+  const [cssDraft, setCssDraft] = useState('')
+  const [cssDraftEnabled, setCssDraftEnabled] = useState(false)
+  const [cssPseudoDisabled, setCssPseudoDisabled] = useState(false)
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [saveFileName, setSaveFileName] = useState('')
+  const saveInputRef = useRef(null)
+  const cssImportRef = useRef(null)
+  const [transientTool, setTransientTool] = useState(null)
+  const [removalModal, setRemovalModal] = useState({ visible: false, tagSelector: 'g, div, section', count: 0 })
 
   const selectedRefs = useRef(new Set())
   const clipboardRef = useRef([])
@@ -33,6 +62,12 @@ export default function App() {
   const actionsRef = useRef(null)
   const codePanelRef = useRef(null)
   const codePrettified = isPrettified(htmlCode)
+
+  const [history, setHistory] = useState([DEFAULT_CODE])
+  const [historyIndex, setHistoryIndex] = useState(0)
+  const suppressHistoryRef = useRef(false)
+  const saveTimerRef = useRef(null)
+  const initialLoadDoneRef = useRef(false)
 
   const handleCodeChange = useCallback((newCode) => {
     setHtmlCode(newCode)
@@ -130,22 +165,72 @@ export default function App() {
   }, [])
 
   const toolHint = activeTool === 'select' ? 'Click to select · Drag to marquee'
-    : activeTool === 'path-select' ? 'Click to select path elements'
-    : activeTool === 'zoom' ? 'Scroll to zoom · Ctrl+click to zoom out' : ''
+    : activeTool === 'path-select' ? `Click to select ${pathTagFilter === 'any' ? 'any element' : `<${pathTagFilter}>`} · Right-click tool for tag filter`
+      : activeTool === 'zoom' ? 'Scroll to zoom · Ctrl+click to zoom out' : ''
 
   const callAction = useCallback((name, ...args) => {
-    if (actionsRef.current && actionsRef.current[name]) {
+    if (actionsRef.current && typeof actionsRef.current[name] === 'function') {
       actionsRef.current[name](...args)
     }
   }, [])
 
   const performDelete = useCallback(() => callAction('performDelete'), [callAction])
+  const performDeleteAll = useCallback(() => callAction('performDeleteAll'), [callAction])
+  const performDeleteUnselected = useCallback(() => callAction('performDeleteUnselected'), [callAction])
   const performCopy = useCallback(() => callAction('performCopy'), [callAction])
   const performCut = useCallback(() => callAction('performCut'), [callAction])
   const performPaste = useCallback(() => callAction('performPaste'), [callAction])
   const performExtract = useCallback(() => callAction('performExtract'), [callAction])
   const performGroup = useCallback(() => callAction('performGroup'), [callAction])
-  const performCleanEmptyGroups = useCallback(() => callAction('cleanEmptyGroups'), [callAction])
+  const performSnapToCode = useCallback(() => {
+    const els = Array.from(selectedRefs.current).filter(el => document.contains(el))
+    if (els.length === 0) return
+    const getCleanHtml = (el) => stripSelectionMarkers(el.outerHTML)
+    if (els.length === 1) {
+      codePanelRef.current?.selectCodeInEditor(getCleanHtml(els[0]))
+    } else {
+      els.sort((a, b) => {
+        const pos = a.compareDocumentPosition(b)
+        if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1
+        if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1
+        return 0
+      })
+      codePanelRef.current?.selectRange(els.map(getCleanHtml))
+    }
+  }, [])
+
+  const performCleanEmptyGroups = useCallback((tag) => {
+    if (tag) {
+      callAction('cleanEmptyGroups', tag)
+    } else {
+      callAction('cleanEmptyGroups')
+    }
+  }, [callAction])
+  const performCleanEmptyAll = useCallback(() => callAction('cleanEmptyAll'), [callAction])
+
+  const handleTransientChange = useCallback((tool) => {
+    setTransientTool(tool)
+  }, [])
+
+  const handleEmptyGroupRemoval = useCallback((tagSelector) => {
+    const sel = tagSelector || 'g, div, section'
+    const count = actionsRef.current?.countEmptyGroups?.(sel) ?? 0
+    if (count === 0) return
+    setRemovalModal({ visible: true, tagSelector: sel, count })
+  }, [])
+
+  const confirmEmptyGroupRemoval = useCallback(() => {
+    callAction('removeEmptyGroups', removalModal.tagSelector)
+    setRemovalModal({ visible: false, tagSelector: 'g, div, section', count: 0 })
+  }, [callAction, removalModal.tagSelector])
+
+  const cancelEmptyGroupRemoval = useCallback(() => {
+    setRemovalModal({ visible: false, tagSelector: 'g, div, section', count: 0 })
+  }, [])
+  const performZoomToContent = useCallback(() => callAction('zoomToContent'), [callAction])
+  const performZoomToCenter = useCallback(() => callAction('zoomToCenter'), [callAction])
+  const performSelectZoomIn = useCallback(() => callAction('activateRectZoom'), [callAction])
+  const performRotateSelected = useCallback((angle) => callAction('rotateSelected', angle), [callAction])
 
   const performToggleFormat = useCallback(() => {
     const result = codePrettified ? minifyHtml(htmlCode) : prettyPrint(htmlCode)
@@ -162,6 +247,152 @@ export default function App() {
     callAction('clearSelections')
     setSelectedCount(0)
   }, [callAction])
+
+  const handleMeasureContent = useCallback(() => {
+    const bbox = actionsRef.current?.getContentBBox?.()
+    return bbox || null
+  }, [])
+
+  const applySizing = useCallback((stretchOnly) => {
+    const bbox = handleMeasureContent()
+    if (!bbox) return
+    const pad = 20
+    const vbX = String(Math.floor(bbox.x - pad))
+    const vbY = String(Math.floor(bbox.y - pad))
+    const vbW = String(Math.ceil(bbox.w + pad * 2))
+    const vbH = String(Math.ceil(bbox.h + pad * 2))
+    const sizeW = String(Math.ceil(bbox.w + pad * 2))
+    const sizeH = String(Math.ceil(bbox.h + pad * 2))
+    const updated = updateSvgAttrs(htmlCode, {
+      vbX, vbY, vbW, vbH,
+      width: stretchOnly ? undefined : sizeW,
+      height: stretchOnly ? undefined : sizeH,
+    })
+    handleSaveArtboard(updated)
+  }, [htmlCode, handleMeasureContent, handleSaveArtboard])
+
+  const handleCanvasSizing = useCallback(() => {
+    applySizing(false)
+    setContextMenu((prev) => ({ ...prev, visible: false }))
+  }, [applySizing])
+
+  const handleStretchViewbox = useCallback(() => {
+    applySizing(true)
+    setContextMenu((prev) => ({ ...prev, visible: false }))
+  }, [applySizing])
+
+  const downloadSvg = useCallback((name) => {
+    const container = document.querySelector('.canvas-content')
+    const filename = name ? `${name.replace(/[^a-zA-Z0-9_\-\s]/g, '')}.svg` : 'svg_master.svg'
+    if (!container) {
+      const blob = new Blob([htmlCode], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      return
+    }
+    const svg = container.querySelector('svg')
+    const svgHtml = svg ? svg.outerHTML : container.innerHTML
+    const blob = new Blob([svgHtml], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [htmlCode])
+
+  const handleSaveSvg = useCallback(() => {
+    setSaveFileName('')
+    setSaveModalOpen(true)
+    setTimeout(() => saveInputRef.current?.focus(), 50)
+  }, [])
+
+  useEffect(() => {
+    if (initialLoadDoneRef.current) return
+    initialLoadDoneRef.current = true
+    loadState('svgCode').then((saved) => {
+      if (saved && saved !== DEFAULT_CODE) {
+        suppressHistoryRef.current = true
+        setHtmlCode(saved)
+        setHistory([saved])
+        setHistoryIndex(0)
+        suppressHistoryRef.current = false
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (cssModalOpen) setCssDraft(cssContent)
+  }, [cssContent, cssModalOpen])
+
+  useEffect(() => {
+    if (suppressHistoryRef.current || !initialLoadDoneRef.current) return
+    setHistory((prev) => {
+      const trimmed = prev.slice(0, historyIndex + 1)
+      const next = [...trimmed, htmlCode]
+      if (next.length > 50) next.shift()
+      return next
+    })
+    setHistoryIndex((i) => Math.min(i + 1, 49))
+  }, [htmlCode])
+
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      saveState('svgCode', htmlCode)
+      saveState('history', { entries: history, index: historyIndex })
+    }, 500)
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
+  }, [htmlCode, history, historyIndex])
+
+  const performUndo = useCallback(() => {
+    if (historyIndex <= 0) return
+    const newIndex = historyIndex - 1
+    suppressHistoryRef.current = true
+    setHtmlCode(history[newIndex])
+    setHistoryIndex(newIndex)
+    suppressHistoryRef.current = false
+    setParsing(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => setParsing(false)))
+    const container = document.querySelector('.canvas-content')
+    if (container) container.innerHTML = history[newIndex]
+  }, [historyIndex, history])
+
+  const performRedo = useCallback(() => {
+    if (historyIndex >= history.length - 1) return
+    const newIndex = historyIndex + 1
+    suppressHistoryRef.current = true
+    setHtmlCode(history[newIndex])
+    setHistoryIndex(newIndex)
+    suppressHistoryRef.current = false
+    setParsing(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => setParsing(false)))
+    const container = document.querySelector('.canvas-content')
+    if (container) container.innerHTML = history[newIndex]
+  }, [historyIndex, history])
+
+  useEffect(() => {
+    const handler = (e) => {
+      const isEditing = document.activeElement?.tagName === 'TEXTAREA' ||
+        document.activeElement?.tagName === 'INPUT'
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        if (isEditing) return
+        e.preventDefault()
+        performUndo()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        if (isEditing) return
+        e.preventDefault()
+        performRedo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [performUndo, performRedo])
 
   return (
     <div className="app">
@@ -194,21 +425,30 @@ export default function App() {
             onToggleCodePanel={handleToggleCodePanel}
             codePanelVisible={codePanelVisible}
             parsing={parsing}
+            pathTagFilter={pathTagFilter}
+            visualCssEnabled={visualCssEnabled}
+            cssContent={cssContent}
+            cssPseudoDisabled={cssPseudoDisabled}
+            onTransientChange={handleTransientChange}
           />
         </div>
       </div>
 
       <Toolbar
-        activeTool={activeTool}
+        activeTool={transientTool || activeTool}
         onToolChange={handleToolChange}
         selectedCount={selectedCount}
         onDelete={performDelete}
+        onDeleteAll={performDeleteAll}
+        onDeleteUnselected={performDeleteUnselected}
         onExtract={performExtract}
         onCopy={performCopy}
         onCut={performCut}
         onPaste={performPaste}
         onGroup={performGroup}
         onCleanEmptyGroups={performCleanEmptyGroups}
+        onCleanEmptyAll={performCleanEmptyAll}
+        onEmptyGroupRemoval={handleEmptyGroupRemoval}
         onToggleFormat={performToggleFormat}
         onClearSelections={performClearSelections}
         codePrettified={codePrettified}
@@ -217,6 +457,17 @@ export default function App() {
         canCopy={selectedCount > 0}
         canPaste={clipboardSize > 0}
         clipboardSize={clipboardSize}
+        onSave={handleSaveSvg}
+        onZoomToContent={performZoomToContent}
+        onZoomToCenter={performZoomToCenter}
+        onSelectZoomIn={performSelectZoomIn}
+        onRotateSelected={performRotateSelected}
+        pathTagFilter={pathTagFilter}
+        onPathTagFilterChange={setPathTagFilter}
+        visualCssEnabled={visualCssEnabled}
+        onTogglePseudoEffects={() => setCssPseudoDisabled((v) => !v)}
+        cssPseudoDisabled={cssPseudoDisabled}
+        onOpenCssModal={() => { setCssDraft(cssContent); setCssDraftEnabled(visualCssEnabled); setCssModalOpen(true) }}
       />
 
       <ContextMenu
@@ -232,7 +483,10 @@ export default function App() {
         onCut={performCut}
         onPaste={performPaste}
         onExtract={performExtract}
+        onSnapToCode={performSnapToCode}
         onCanvasSize={handleCanvasSize}
+        onCanvasSizing={handleCanvasSizing}
+        onStretchViewbox={handleStretchViewbox}
         clipboardSize={clipboardSize}
       />
 
@@ -249,6 +503,132 @@ export default function App() {
         onClose={() => setArtboardModal({ visible: false })}
         onSave={handleSaveArtboard}
       />
+
+      <ConfirmModal
+        visible={removalModal.visible}
+        title="Remove Empty Groups"
+        message={`Are you sure you want to remove ${removalModal.count} empty element${removalModal.count === 1 ? '' : 's'} (${removalModal.tagSelector})?`}
+        confirmLabel="Remove"
+        variant="danger"
+        onConfirm={confirmEmptyGroupRemoval}
+        onCancel={cancelEmptyGroupRemoval}
+      />
+
+      {cssModalOpen && (
+        <div className="modal-backdrop" onClick={() => setCssModalOpen(false)}>
+          <div className="css-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>CSS Injection</h3>
+              <button className="modal-close" onClick={() => setCssModalOpen(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div className="css-modal-status">
+                <span className="css-status-label">CSS Active</span>
+                <label className="css-toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={cssDraftEnabled}
+                    onChange={() => setCssDraftEnabled((v) => !v)}
+                  />
+                  <span className="css-toggle-slider" />
+                </label>
+              </div>
+              <textarea
+                className="css-modal-textarea"
+                value={cssDraft}
+                onChange={(e) => setCssDraft(e.target.value)}
+                placeholder={`/* Write SVG CSS here */\n* { outline: 1px solid red; }\n*:hover { fill: rgba(0,153,255,0.15) !important; stroke: #09f !important; }`}
+                spellCheck={false}
+              />
+              <input
+                ref={cssImportRef}
+                type="file"
+                accept=".css"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      setCssDraft(reader.result)
+                      setCssDraftEnabled(true)
+                    }
+                    reader.readAsText(file)
+                  }
+                  e.target.value = ''
+                }}
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="modal-btn modal-btn-cancel" onClick={() => setCssModalOpen(false)}>Cancel</button>
+              <button className="modal-btn modal-btn-secondary" onClick={() => cssImportRef.current?.click()}>
+                Import CSS
+              </button>
+              {cssDraft && (
+                <button className="modal-btn modal-btn-danger-outline" onClick={() => { setCssDraft(''); setCssDraftEnabled(false) }}>
+                  Remove
+                </button>
+              )}
+              <button
+                className="modal-btn modal-btn-save"
+                onClick={() => {
+                  setCssContent(cssDraft)
+                  setVisualCssEnabled(cssDraftEnabled)
+                  setCssModalOpen(false)
+                }}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {saveModalOpen && (
+        <div className="modal-backdrop" onClick={() => setSaveModalOpen(false)}>
+          <div className="group-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h3>Save SVG File</h3>
+              <button className="modal-close" onClick={() => setSaveModalOpen(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#999' }}>
+                File name (optional)
+              </label>
+              <input
+                ref={saveInputRef}
+                type="text"
+                className="save-name-input"
+                value={saveFileName}
+                onChange={(e) => setSaveFileName(e.target.value)}
+                placeholder="svg_master"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    downloadSvg(saveFileName)
+                    setSaveModalOpen(false)
+                  }
+                }}
+                style={{
+                  width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #333',
+                  background: '#1a1a1a', color: '#e0e0e0', fontSize: 14, outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="modal-btn modal-btn-cancel" onClick={() => setSaveModalOpen(false)}>Cancel</button>
+              <button
+                className="modal-btn modal-btn-save"
+                onClick={() => {
+                  downloadSvg(saveFileName)
+                  setSaveModalOpen(false)
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 export default function ContextMenu({
   visible,
   x,
@@ -10,13 +12,18 @@ export default function ContextMenu({
   onCut,
   onPaste,
   onExtract,
+  onSnapToCode,
   onCanvasSize,
+  onCanvasSizing,
+  onStretchViewbox,
   clipboardSize,
 }) {
+  const [sizingOpen, setSizingOpen] = useState(false)
+
   if (!visible) return null
 
   const menuWidth = 200
-  const menuHeight = 320
+  const menuHeight = 340
   const clampedX = Math.min(x, window.innerWidth - menuWidth - 16)
   const clampedY = Math.min(y, window.innerHeight - menuHeight - 16)
   const style = { left: Math.max(8, clampedX), top: Math.max(8, clampedY) }
@@ -59,18 +66,44 @@ export default function ContextMenu({
               <span>Group</span>
               <span className="context-menu-shortcut">Ctrl+G</span>
             </button>
+            <button className="context-menu-item" onClick={() => { onSnapToCode?.(); onClose() }} disabled={!hasSelection}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+              <span>Snap to code</span>
+            </button>
             <div className="context-menu-separator" />
           </>
         ) : null}
 
-        <button className="context-menu-item" onClick={() => { onCanvasSize(); onClose() }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <line x1="3" y1="9" x2="21" y2="9" />
-            <line x1="9" y1="3" x2="9" y2="21" />
-          </svg>
-          <span>Canvas Size...</span>
-        </button>
+        <div className="context-menu-submenu" onMouseEnter={() => setSizingOpen(true)} onMouseLeave={() => setSizingOpen(false)}>
+          <button
+            className="context-menu-item"
+            onClick={() => setSizingOpen((v) => !v)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+            <span>Sizing</span>
+            <span className="context-menu-arrow">▶</span>
+          </button>
+          {sizingOpen && (
+            <div className="context-menu-submenu-content">
+              <button className="context-menu-item" onClick={() => { onCanvasSizing?.(); onClose() }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" /></svg>
+                <span>Canvas Sizing</span>
+              </button>
+              <button className="context-menu-item" onClick={() => { onStretchViewbox?.(); onClose() }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 00-2 2v3" /><path d="M21 8V5a2 2 0 00-2-2h-3" /><path d="M16 21h3a2 2 0 002-2v-3" /><path d="M3 16v3a2 2 0 002 2h3" /></svg>
+                <span>Stretch viewBox</span>
+              </button>
+              <div className="context-menu-separator" />
+              <button className="context-menu-item" onClick={() => { onCanvasSize(); onClose() }}>
+                <span>Open Sizing Panel...</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </>
   )

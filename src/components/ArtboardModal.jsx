@@ -15,7 +15,7 @@ function parseViewBox(html) {
   }
 }
 
-function updateSvgAttrs(html, { vbX, vbY, vbW, vbH, width, height }) {
+export function updateSvgAttrs(html, { vbX, vbY, vbW, vbH, width, height }) {
   let result = html
   const viewBox = `${vbX} ${vbY} ${vbW} ${vbH}`
   if (result.includes('viewBox')) {
@@ -26,10 +26,10 @@ function updateSvgAttrs(html, { vbX, vbY, vbW, vbH, width, height }) {
       result = result.replace('<svg', `<svg viewBox="${viewBox}"`)
     }
   }
-  if (result.includes('width=')) {
+  if (width !== undefined && result.includes('width=')) {
     result = result.replace(/width=["'][^"']*["']/, `width="${width}"`)
   }
-  if (result.includes('height=')) {
+  if (height !== undefined && result.includes('height=')) {
     result = result.replace(/height=["'][^"']*["']/, `height="${height}"`)
   }
   return result
@@ -56,7 +56,7 @@ export default function ArtboardModal({ visible, htmlCode, onClose, onSave }) {
     <div className="modal-backdrop" onClick={handleBackdrop}>
       <div className="group-modal" style={{ width: 400 }}>
         <div className="modal-header">
-          <h3>Canvas / Artboard Size</h3>
+          <h3>Sizing</h3>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
