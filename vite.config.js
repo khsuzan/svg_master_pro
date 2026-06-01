@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
 export default defineConfig({
   base: '/svg_master_pro/',
   plugins: [react()],
@@ -10,6 +9,13 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            if (id.includes('monaco-editor/esm/vs/language')) {
+              return 'vendor-monaco-lang'
+            }
+            if (id.includes('monaco-editor/esm/vs/editor/editor.worker') ||
+                id.includes('monaco-editor/esm/vs/base/worker/workerMain')) {
+              return 'vendor-monaco-worker'
+            }
             if (id.includes('monaco-editor')) {
               return 'vendor-monaco'
             }
@@ -20,6 +26,8 @@ export default defineConfig({
           }
         }
       }
-    }
+    },
+    chunkSizeWarningLimit: 5000,
+    reportCompressedSize: true,
   },
 })
