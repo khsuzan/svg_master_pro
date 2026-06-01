@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/khsuzan/svg_master_pro/releases">
-    <img src="https://img.shields.io/badge/version-v1.0.4-f97316?style=for-the-badge&logo=semver" alt="Version" />
+    <img src="https://img.shields.io/badge/version-v1.0.5-f97316?style=for-the-badge&logo=semver" alt="Version" />
   </a>
   <a href="https://github.com/khsuzan/svg_master_pro">
     <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License" />
@@ -63,6 +63,7 @@ The visual editing core of SVG Master Pro resides within its floating multi-acti
 | **🔍 Zoom Tool** | Manual click/drag viewport scale adjustments | Camera tools: **Select to Zoom In**, **Snap Window to Content**, **Zoom to Center** |
 | **🗑️ Delete Tool** | Instantly purges active selected canvas elements | Selective purges: **Delete Selection**, **Delete Unselected (Inverse)**, **Delete All** |
 | **🔄 Rotate Tool** | Dynamic angular transformation overlays | Fast rotations: **Rotate 90° CW**, **Rotate 90° CCW**, **Rotate 180°** |
+| **🖌️ Brush Select Tool** | Paintbrush-style multi-select by area | Brush size slider + presets (10–80px) via right-click |
 
 
 ### 1. Select Tool
@@ -130,6 +131,19 @@ Angular rotations and transformations of vector structures.
   * ↪️ **Rotate 90° CW:** Clockwise rotation (`90°`).
   * ↩️ **Rotate 90° CCW:** Counter-clockwise rotation (`-90°`).
   * 🔃 **Rotate 180°:** Inverts the graphic completely upside down (`180°`).
+
+---
+
+### 7. Brush Select Tool
+Area-based multi-select using a circular brush cursor.
+* **Primary Function:** Drag across the canvas to select all SVG elements whose bounding boxes intersect the brush circle. Elements are added to the selection in real time as you move.
+* **⚡ Right-Click Brush Size Menu:**
+  * **Slider:** Adjust brush radius from 5px to 100px.
+  * **Presets:** Quick-select common sizes: **10px**, **20px**, **30px**, **50px**, **80px**.
+* **💡 Active Shortcut Actions:**
+  * `[` / `]` — Decrease / increase brush size by 5px (hold `Shift` for 1px steps).
+  * Hold **`Shift`** while dragging to subtract elements from the current selection instead of adding.
+  * Without `Shift`, dragging adds elements to the existing selection (or starts fresh if nothing was selected).
 
 ---
 
