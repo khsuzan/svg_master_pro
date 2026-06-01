@@ -378,6 +378,30 @@ export default function App() {
   }, [historyIndex, history])
 
   useEffect(() => {
+    const suppressKey = (e) => {
+      const isEditing = document.activeElement?.tagName === 'TEXTAREA' ||
+        document.activeElement?.tagName === 'INPUT'
+      if (isEditing) return
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+        e.preventDefault()
+      }
+    }
+    const suppressClick = (e) => {
+      if ((e.ctrlKey || e.metaKey || e.shiftKey) &&
+        e.target.closest('.canvas-content')) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    document.addEventListener('keydown', suppressKey, { capture: true })
+    document.addEventListener('click', suppressClick, { capture: true })
+    return () => {
+      document.removeEventListener('keydown', suppressKey, { capture: true })
+      document.removeEventListener('click', suppressClick, { capture: true })
+    }
+  }, [])
+
+  useEffect(() => {
     const handler = (e) => {
       const isEditing = document.activeElement?.tagName === 'TEXTAREA' ||
         document.activeElement?.tagName === 'INPUT'

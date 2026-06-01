@@ -39,7 +39,6 @@ export default function Toolbar({
   brushSize = 30,
   onBrushSizeChange,
 }) {
-  const [selectOpen, setSelectOpen] = useState(false)
   const [zoomMenuOpen, setZoomMenuOpen] = useState(false)
   const [pathMenuOpen, setPathMenuOpen] = useState(false)
   const [deleteMenuOpen, setDeleteMenuOpen] = useState(false)

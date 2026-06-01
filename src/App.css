@@ -580,6 +580,16 @@
   pointer-events: none;
 }
 
+.brush-circle {
+  position: fixed;
+  z-index: 9999;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: rgba(0, 153, 255, 0.1);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 /* ===== Floating Toolbar ===== */
 .toolbar-floating {
   position: fixed;

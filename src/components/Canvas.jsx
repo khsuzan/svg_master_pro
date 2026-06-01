@@ -130,7 +130,6 @@ function Canvas({
   pathTagFilterRef.current = pathTagFilter
   const [viewportSize, setViewportSize] = useState({ w: 1200, h: 800 })
   const viewportSizeRef = useRef({ w: 1200, h: 800 })
-  const [brushPos, setBrushPos] = useState(null)
   const brushSizeRef = useRef(brushSize)
   brushSizeRef.current = brushSize
   const onBrushSizeChangeRef = useRef(onBrushSizeChange)
@@ -286,11 +285,7 @@ function Canvas({
 
   const selectElement = useCallback((el, shiftKey) => {
     if (shiftKey) {
-      if (selectedRefs.current.has(el)) {
-        selectedRefs.current.delete(el)
-      } else {
-        selectedRefs.current.add(el)
-      }
+      selectedRefs.current.delete(el)
     } else {
       selectedRefs.current.clear()
       selectedRefs.current.add(el)
@@ -1006,7 +1001,11 @@ function Canvas({
         if (!e.shiftKey) clearSelection()
         startDrag(e)
         const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
-        elements.forEach(el => selectedRefs.current.add(el))
+        if (e.shiftKey) {
+          elements.forEach(el => selectedRefs.current.delete(el))
+        } else {
+          elements.forEach(el => selectedRefs.current.add(el))
+        }
         onSelectionChange(selectedRefs.current.size)
         onSelectionUpdate?.(selectedRefs.current)
         applySelectionStyles()
@@ -1060,7 +1059,11 @@ function Canvas({
       if (!e.shiftKey) clearSelection()
       startDrag(e)
       const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
-      elements.forEach(el => selectedRefs.current.add(el))
+      if (e.shiftKey) {
+        elements.forEach(el => selectedRefs.current.delete(el))
+      } else {
+        elements.forEach(el => selectedRefs.current.add(el))
+      }
       onSelectionChange(selectedRefs.current.size)
       onSelectionUpdate?.(selectedRefs.current)
       applySelectionStyles()
@@ -1198,7 +1201,7 @@ function Canvas({
     setBrushPos(null)
   }, [])
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e) => {
     if (isPanningRef.current) return
 
     // Finalize drag-to-move
@@ -1274,8 +1277,12 @@ function Canvas({
             clickedElement.tagName?.toLowerCase() === 'g' ||
             isGroupElement(clickedElement))
         if (isSvgContent) {
-          selectedRefs.current.clear()
-          selectedRefs.current.add(clickedElement)
+          if (e.shiftKey) {
+            selectedRefs.current.delete(clickedElement)
+          } else {
+            selectedRefs.current.clear()
+            selectedRefs.current.add(clickedElement)
+          }
           onSelectionChange(selectedRefs.current.size)
           onSelectionUpdate?.(selectedRefs.current)
           applySelectionStyles()
