@@ -49,6 +49,7 @@ export default function App() {
   const [cssDraft, setCssDraft] = useState('')
   const [cssDraftEnabled, setCssDraftEnabled] = useState(false)
   const [cssPseudoDisabled, setCssPseudoDisabled] = useState(false)
+  const [brushSize, setBrushSize] = useState(30)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [saveFileName, setSaveFileName] = useState('')
   const saveInputRef = useRef(null)
@@ -166,7 +167,8 @@ export default function App() {
 
   const toolHint = activeTool === 'select' ? 'Click to select · Drag to marquee'
     : activeTool === 'path-select' ? `Click to select ${pathTagFilter === 'any' ? 'any element' : `<${pathTagFilter}>`} · Right-click tool for tag filter`
-      : activeTool === 'zoom' ? 'Scroll to zoom · Ctrl+click to zoom out' : ''
+      : activeTool === 'zoom' ? 'Scroll to zoom · Ctrl+click to zoom out'
+        : activeTool === 'brush-select' ? 'Drag to paint-select · [ ] to resize brush · Shift to subtract' : ''
 
   const callAction = useCallback((name, ...args) => {
     if (actionsRef.current && typeof actionsRef.current[name] === 'function') {
@@ -430,6 +432,8 @@ export default function App() {
             cssContent={cssContent}
             cssPseudoDisabled={cssPseudoDisabled}
             onTransientChange={handleTransientChange}
+            brushSize={brushSize}
+            onBrushSizeChange={setBrushSize}
           />
         </div>
       </div>
@@ -468,6 +472,8 @@ export default function App() {
         onTogglePseudoEffects={() => setCssPseudoDisabled((v) => !v)}
         cssPseudoDisabled={cssPseudoDisabled}
         onOpenCssModal={() => { setCssDraft(cssContent); setCssDraftEnabled(visualCssEnabled); setCssModalOpen(true) }}
+        brushSize={brushSize}
+        onBrushSizeChange={setBrushSize}
       />
 
       <ContextMenu

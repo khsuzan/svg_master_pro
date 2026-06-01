@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+const BRUSH_PRESETS = [10, 20, 30, 50, 80]
+
 export default function Toolbar({
   activeTool,
   onToolChange,
@@ -34,6 +36,8 @@ export default function Toolbar({
   onOpenCssModal,
   onTogglePseudoEffects,
   cssPseudoDisabled,
+  brushSize = 30,
+  onBrushSizeChange,
 }) {
   const [selectOpen, setSelectOpen] = useState(false)
   const [zoomMenuOpen, setZoomMenuOpen] = useState(false)
@@ -43,6 +47,7 @@ export default function Toolbar({
   const [removalMenuOpen, setRemovalMenuOpen] = useState(false)
   const [rotateMenuOpen, setRotateMenuOpen] = useState(false)
   const [cssMenuOpen, setCssMenuOpen] = useState(false)
+  const [brushMenuOpen, setBrushMenuOpen] = useState(false)
   const tools = [
     {
       id: 'select',
@@ -70,6 +75,17 @@ export default function Toolbar({
           <path d="M15 5.5V8.5C15 9.32 14.32 10 13.5 10H10.5C9.68 10 9 9.32 9 8.5V5.5C9 4.68 9.68 4 10.5 4H13.5C14.32 4 15 4.68 15 5.5Z" />
           <path d="M15 7.72998C17.37 8.92998 19 11.51 19 14.5C19 14.67 18.99 14.83 18.97 15" />
           <path d="M5.03 15C5.01 14.83 5 14.67 5 14.5C5 11.51 6.63 8.92998 9 7.72998" />
+        </svg>
+      ),
+    },
+    {
+      id: 'brush-select',
+      label: 'Brush Select',
+      shortcut: 'B',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18.37 2.63L14 7l-1.59-1.59a2 2 0 00-2.82 0L8 7l9 9 1.59-1.59a2 2 0 000-2.82L17 10l4.37-4.37a2 2 0 000-2.82l-.18-.18a2 2 0 00-2.82 0z"/>
+          <path d="M9 13c-2.21 0-4 1.79-4 4 0 .92-.86 1.87-2 2 1.13 0 2 .87 2 2 0 2.21 1.79 4 4 4s4-1.79 4-4"/>
         </svg>
       ),
     },
@@ -249,6 +265,52 @@ export default function Toolbar({
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" /></svg>
                         Rotate 180°
                       </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : tool.id === 'brush-select' ? (
+              <div key={tool.id} className="toolbar-select-wrapper">
+                <button
+                  className={`tool-floating-btn ${activeTool === tool.id ? 'active' : ''}`}
+                  onClick={() => onToolChange(tool.id)}
+                  onContextMenu={(e) => { e.preventDefault(); setBrushMenuOpen((v) => !v) }}
+                  title={`${tool.label} (${tool.shortcut}) · Right-click for brush size`}
+                >
+                  {tool.icon}
+                </button>
+                {brushMenuOpen && (
+                  <>
+                    <div className="toolbar-dropdown-backdrop" onClick={() => setBrushMenuOpen(false)} />
+                    <div className="toolbar-dropdown" style={{ minWidth: 160 }}>
+                      <div className="toolbar-dropdown-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6, cursor: 'default' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                          <span style={{ fontSize: 11, opacity: 0.7 }}>Brush size</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, minWidth: 28, textAlign: 'right' }}>{brushSize}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="100"
+                          value={brushSize}
+                          onChange={(e) => onBrushSizeChange?.(Number(e.target.value))}
+                          style={{ width: '100%', margin: 0, accentColor: 'var(--accent)' }}
+                        />
+                      </div>
+                      <div className="toolbar-dropdown-sep" />
+                      <div style={{ display: 'flex', gap: 4, padding: '4px 8px', justifyContent: 'center' }}>
+                        {BRUSH_PRESETS.map((size) => (
+                          <button
+                            key={size}
+                            className={`tool-floating-btn ${brushSize === size ? 'active' : ''}`}
+                            onClick={() => { onBrushSizeChange?.(size); setBrushMenuOpen(false) }}
+                            title={`${size}px`}
+                            style={{ width: 28, height: 28, fontSize: 10 }}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}

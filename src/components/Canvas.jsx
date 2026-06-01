@@ -54,6 +54,30 @@ function findElementAtCursor(container, tagName, code, cursorPos) {
   return best
 }
 
+function circleIntersectsRect(cx, cy, r, rect) {
+  const closestX = Math.max(rect.left, Math.min(cx, rect.right))
+  const closestY = Math.max(rect.top, Math.min(cy, rect.bottom))
+  const dx = cx - closestX
+  const dy = cy - closestY
+  return dx * dx + dy * dy <= r * r
+}
+
+function getElementsInBrush(container, cx, cy, radius) {
+  const svg = container.querySelector('svg')
+  if (!svg) return []
+  const all = svg.querySelectorAll('*')
+  const result = []
+  for (const el of all) {
+    if (el.children.length > 0) continue
+    const rect = el.getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) continue
+    if (circleIntersectsRect(cx, cy, radius, rect)) {
+      result.push(el)
+    }
+  }
+  return result
+}
+
 function Canvas({
   htmlCode,
   onCodeChange,
@@ -74,11 +98,14 @@ function Canvas({
   cssContent = '',
   cssPseudoDisabled = false,
   onTransientChange,
+  brushSize = 30,
+  onBrushSizeChange,
 }) {
   const wrapperRef = useRef(null)
   const containerRef = useRef(null)
   const currentHtmlRef = useRef('')
   const [marqueeStyle, setMarqueeStyle] = useState(null)
+  const [brushPos, setBrushPos] = useState(null)
   const [dragging, setDragging] = useState(false)
   const draggingRef = useRef(false)
   const dragStart = useRef(null)
@@ -91,8 +118,23 @@ function Canvas({
   const zoomRef = useRef(1)
   zoomRef.current = zoom
   const [svgSize, setSvgSize] = useState({ w: 800, h: 600 })
+
+  const cssEnabledRef = useRef(visualCssEnabled)
+  cssEnabledRef.current = visualCssEnabled
+  const cssContentRef = useRef(cssContent)
+  cssContentRef.current = cssContent
+  const cssPseudoRef = useRef(cssPseudoDisabled)
+  cssPseudoRef.current = cssPseudoDisabled
+
+  const pathTagFilterRef = useRef(pathTagFilter)
+  pathTagFilterRef.current = pathTagFilter
   const [viewportSize, setViewportSize] = useState({ w: 1200, h: 800 })
   const viewportSizeRef = useRef({ w: 1200, h: 800 })
+  const [brushPos, setBrushPos] = useState(null)
+  const brushSizeRef = useRef(brushSize)
+  brushSizeRef.current = brushSize
+  const onBrushSizeChangeRef = useRef(onBrushSizeChange)
+  onBrushSizeChangeRef.current = onBrushSizeChange
   viewportSizeRef.current = viewportSize
   const [dragOver, setDragOver] = useState(false)
   const [transientTool, setTransientTool] = useState(null)
@@ -167,7 +209,9 @@ function Canvas({
     if (!containerRef.current) return
     const svg = containerRef.current.querySelector('svg')
     if (!svg) return
-    const newHtml = stripSelectionMarkers(svg.outerHTML)
+    const clone = svg.cloneNode(true)
+    clone.querySelector('#__vis_css')?.remove()
+    const newHtml = stripSelectionMarkers(clone.outerHTML)
     currentHtmlRef.current = newHtml
     onCodeChange(newHtml)
   }, [onCodeChange])
@@ -191,6 +235,27 @@ function Canvas({
         }
         containerRef.current.innerHTML = code
         currentHtmlRef.current = code
+        // Re-inject visual CSS after DOM replacement
+        if (cssEnabledRef.current) {
+          const newSvg = containerRef.current.querySelector('svg')
+          if (newSvg && !newSvg.querySelector('#__vis_css')) {
+            let content = cssContentRef.current || `
+        * { transition: fill 0.15s, stroke 0.15s, opacity 0.15s; }
+        *:hover { fill: rgba(0, 153, 255, 0.15) !important; stroke: #09f !important; stroke-width: 1.5 !important; }
+      `
+            if (cssPseudoRef.current) {
+              content = content.replace(/[^{]*\{[^}]*\}/g, (match) => {
+                const sel = match.split('{')[0].trim()
+                if (/:(hover|active|focus|visited|link|focus-within|focus-visible|target)\b/i.test(sel)) return ''
+                return match
+              })
+            }
+            const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+            style.id = '__vis_css'
+            style.textContent = content
+            newSvg.appendChild(style)
+          }
+        }
         selectedRefs.current.clear()
         onSelectionChange(0)
         setOverlays([])
@@ -714,6 +779,17 @@ function Canvas({
         setSpaceDown(true)
         window.addEventListener('mousedown', blockSpaceMouse, true)
       }
+      if (activeTool === 'brush-select') {
+        const step = e.shiftKey ? 1 : 5
+        if (e.key === '[') {
+          e.preventDefault()
+          onBrushSizeChangeRef.current?.(Math.max(5, brushSizeRef.current - step))
+        }
+        if (e.key === ']') {
+          e.preventDefault()
+          onBrushSizeChangeRef.current?.(Math.min(200, brushSizeRef.current + step))
+        }
+      }
     }
     const onKeyUp = (e) => {
       if (e.key === 'Control' && transientTool) {
@@ -926,6 +1002,17 @@ function Canvas({
     if (!containerRef.current) return
     if (target === containerRef.current) {
       if (effectiveTool === 'zoom') return
+      if (effectiveTool === 'brush-select') {
+        if (!e.shiftKey) clearSelection()
+        startDrag(e)
+        const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
+        elements.forEach(el => selectedRefs.current.add(el))
+        onSelectionChange(selectedRefs.current.size)
+        onSelectionUpdate?.(selectedRefs.current)
+        applySelectionStyles()
+        updateOverlayPositions()
+        return
+      }
       clearSelection()
       startDrag(e)
       return
@@ -968,6 +1055,16 @@ function Canvas({
       } else {
         clearSelection()
       }
+      startDrag(e)
+    } else if (effectiveTool === 'brush-select') {
+      if (!e.shiftKey) clearSelection()
+      startDrag(e)
+      const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
+      elements.forEach(el => selectedRefs.current.add(el))
+      onSelectionChange(selectedRefs.current.size)
+      onSelectionUpdate?.(selectedRefs.current)
+      applySelectionStyles()
+      updateOverlayPositions()
     } else if (effectiveTool === 'delete-tool') {
       if (target !== containerRef.current) {
         target.remove()
@@ -1040,7 +1137,7 @@ function Canvas({
       height: Math.abs(e.clientY - dragStart.current.y),
     })
 
-    if (activeTool === 'select' || activeTool === 'path-select') {
+    if (activeTool === 'select' || activeTool === 'path-select' || activeTool === 'brush-select') {
       const now = Date.now()
       if (now - selectionThrottleRef.current < 40 && selectionRAFRef.current) return
       selectionThrottleRef.current = now
@@ -1048,28 +1145,58 @@ function Canvas({
       selectionRAFRef.current = requestAnimationFrame(() => {
         selectionRAFRef.current = null
         if (!containerRef.current || !dragStart.current) return
-        const contentRect = containerRef.current.getBoundingClientRect()
-        const cLeft = Math.min(dragStart.current.x, lastMoveClientX.current) - contentRect.left
-        const cTop = Math.min(dragStart.current.y, lastMoveClientY.current) - contentRect.top
-        const cW = Math.abs(lastMoveClientX.current - dragStart.current.x)
-        const cH = Math.abs(lastMoveClientY.current - dragStart.current.y)
-        if (cW < 3 && cH < 3) return
-        const marqueeRect = {
-          left: cLeft,
-          top: cTop,
-          right: cLeft + cW,
-          bottom: cTop + cH,
+        if (activeTool === 'brush-select') {
+          const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
+          if (e.shiftKey) {
+            elements.forEach(el => selectedRefs.current.delete(el))
+          } else {
+            elements.forEach(el => selectedRefs.current.add(el))
+          }
+          onSelectionChange(selectedRefs.current.size)
+          onSelectionUpdate?.(selectedRefs.current)
+          applySelectionStyles()
+          updateOverlayPositions()
+        } else {
+          const contentRect = containerRef.current.getBoundingClientRect()
+          const cLeft = Math.min(dragStart.current.x, lastMoveClientX.current) - contentRect.left
+          const cTop = Math.min(dragStart.current.y, lastMoveClientY.current) - contentRect.top
+          const cW = Math.abs(lastMoveClientX.current - dragStart.current.x)
+          const cH = Math.abs(lastMoveClientY.current - dragStart.current.y)
+          if (cW < 3 && cH < 3) return
+          const marqueeRect = {
+            left: cLeft,
+            top: cTop,
+            right: cLeft + cW,
+            bottom: cTop + cH,
+          }
+          const leaves = getLeafElementsInRect(containerRef.current, marqueeRect)
+          const filtered = activeTool === 'path-select' && pathTagFilterRef.current !== 'any'
+            ? leaves.filter(el => el.tagName.toLowerCase() === pathTagFilterRef.current)
+            : leaves
+          if (e.shiftKey) {
+            filtered.forEach(el => selectedRefs.current.delete(el))
+          } else {
+            selectedRefs.current.clear()
+            filtered.forEach(el => selectedRefs.current.add(el))
+          }
+          onSelectionChange(selectedRefs.current.size)
+          onSelectionUpdate?.(selectedRefs.current)
+          applySelectionStyles()
+          updateOverlayPositions()
         }
-        const leaves = getLeafElementsInRect(containerRef.current, marqueeRect)
-        selectedRefs.current.clear()
-        leaves.forEach(el => selectedRefs.current.add(el))
-        onSelectionChange(selectedRefs.current.size)
-        onSelectionUpdate?.(selectedRefs.current)
-        applySelectionStyles()
-        updateOverlayPositions()
       })
     }
   }, [activeTool, selectedRefs, onSelectionChange, onSelectionUpdate, applySelectionStyles, updateOverlayPositions])
+
+  const handleCanvasHover = useCallback((e) => {
+    if (effectiveTool === 'brush-select') {
+      setBrushPos({ x: e.clientX, y: e.clientY })
+    }
+  }, [effectiveTool])
+
+  const handleCanvasLeave = useCallback(() => {
+    setBrushPos(null)
+  }, [])
 
   const handleMouseUp = useCallback(() => {
     if (isPanningRef.current) return
@@ -1303,6 +1430,8 @@ function Canvas({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onMouseMove={handleCanvasHover}
+        onMouseLeave={handleCanvasLeave}
       >
         <div className="canvas-scroll">
           <div
@@ -1378,7 +1507,7 @@ function Canvas({
         </div>
         {dragOver && <div className="canvas-drop-indicator">Drop SVG file here</div>}
       </div>
-      {marqueeStyle && (
+      {activeTool !== 'brush-select' && marqueeStyle && (
         <div
           className="marquee-rendered"
           style={{
@@ -1386,6 +1515,17 @@ function Canvas({
             top: marqueeStyle.top,
             width: marqueeStyle.width,
             height: marqueeStyle.height,
+          }}
+        />
+      )}
+      {activeTool === 'brush-select' && brushPos && (
+        <div
+          className="brush-circle"
+          style={{
+            left: brushPos.x,
+            top: brushPos.y,
+            width: brushSize * 2,
+            height: brushSize * 2,
           }}
         />
       )}

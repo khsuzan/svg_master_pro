@@ -1,8 +1,20 @@
 import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle, memo } from 'react'
-import { EditorView, basicSetup } from 'codemirror'
-import { html } from '@codemirror/lang-html'
-import { oneDark } from '@codemirror/theme-one-dark'
-import { EditorState } from '@codemirror/state'
+import Editor, { loader } from '@monaco-editor/react'
+import * as monaco from 'monaco-editor'
+
+import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+
+self.MonacoEnvironment = {
+  getWorker(_, label) {
+    if (label === 'html' || label === 'handlebars' || label === 'razor') {
+      return new HtmlWorker()
+    }
+    return new EditorWorker()
+  },
+}
+
+loader.config({ monaco })
 
 function getTagNameAtPos(code, pos) {
   let start = pos
@@ -146,7 +158,7 @@ function CodeViewMenu({ x, y, currentView, onSwitchView, onCopy, onCut, onPaste,
         </button>
         <button className="context-menu-item" onClick={() => { onCut(); onClose() }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><line x1="8.12" y1="8.12" x2="15.88" y2="15.88" /><line x1="15.88" y1="8.12" x2="8.12" y2="15.88" />
+            <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><line x1="8.12" y1="8.12" x2="15.88" y2="15.88" /><line x1="15.88" y1="15.88" x2="8.12" y2="8.12" />
           </svg>
           <span>Cut</span>
           <span className="context-menu-shortcut">Ctrl+X</span>
@@ -271,8 +283,8 @@ function TreeNode({ node, depth, searchText, onSelect, selectedPath }) {
 }
 
 const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, selectedElement, onCodeSelectElement, hint }, ref) {
-  const editorContainerRef = useRef(null)
-  const editorViewRef = useRef(null)
+  const editorRef = useRef(null)
+  const monacoRef = useRef(null)
   const [view, setView] = useState('raw')
   const [tree, setTree] = useState(() => parseHtmlToTree(value))
   const [selectedPath, setSelectedPath] = useState(null)
@@ -280,64 +292,65 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
   const [treeLoading, setTreeLoading] = useState(false)
   const [treeSearch, setTreeSearch] = useState('')
 
-  const valueRef = useRef(value)
-  const isUserTypingRef = useRef(false)
-  const syncTimerRef = useRef(null)
+  const onChangeRef = useRef(onChange)
   const suppressListenerRef = useRef(false)
-  const scheduleSyncRef = useRef(null)
-  const contextClickPosRef = useRef(-1)
+  const contextClickOffsetRef = useRef(-1)
 
   useEffect(() => {
-    scheduleSyncRef.current = onChange
+    onChangeRef.current = onChange
   }, [onChange])
 
-  useEffect(() => {
-    if (!editorContainerRef.current) return
-    const view = new EditorView({
-      state: EditorState.create({
-        doc: value,
-        extensions: [
-          basicSetup,
-          html(),
-          oneDark,
-          EditorView.theme({
-            '&': { height: '100%', fontSize: '12px', backgroundColor: 'var(--bg-primary)' },
-            '.cm-editor': { backgroundColor: 'var(--bg-primary)' },
-            '.cm-scroller': { fontFamily: "'JetBrains Mono', 'Fira Code', monospace", lineHeight: '1.6', backgroundColor: 'var(--bg-primary)' },
-            '.cm-gutters': { backgroundColor: 'var(--bg-tertiary)', borderRight: '1px solid var(--border-color)' },
-            '.cm-activeLineGutter': { backgroundColor: 'transparent' },
-            '&.cm-focused': { outline: 'none' },
-            '.cm-content': { padding: '12px 16px', caretColor: 'var(--accent)' },
-            '.cm-cursor': { borderLeftColor: 'var(--accent)' },
-            '.cm-selectionBackground': { backgroundColor: 'var(--accent-bg) !important' },
-            '&.cm-focused .cm-selectionBackground': { backgroundColor: 'var(--accent-bg) !important' },
-            '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.03)' },
-          }),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged && !suppressListenerRef.current) {
-              scheduleSyncRef.current?.(update.state.doc.toString())
-            }
-          }),
-        ],
-      }),
-      parent: editorContainerRef.current,
+  const handleEditorDidMount = useCallback((editor, mon) => {
+    editorRef.current = editor
+    monacoRef.current = mon
+
+    mon.editor.defineTheme('svg-master-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'tag', foreground: 'c792ea' },
+        { token: 'attribute.name', foreground: 'ffcb6b' },
+        { token: 'attribute.value', foreground: 'c3e88d' },
+        { token: 'comment', foreground: '6c7086', fontStyle: 'italic' },
+        { token: 'string', foreground: 'c3e88d' },
+        { token: 'keyword', foreground: 'c792ea' },
+        { token: 'number', foreground: 'f78c6c' },
+        { token: 'delimiter', foreground: '89ddff' },
+      ],
+      colors: {
+        'editor.background': '#1e1e2e',
+        'editor.foreground': '#cdd6f4',
+        'editor.lineHighlightBackground': 'rgba(255,255,255,0.03)',
+        'editor.selectionBackground': 'rgba(137,180,250,0.25)',
+        'editorCursor.foreground': '#89b4fa',
+        'editorLineNumber.foreground': '#585b70',
+        'editorLineNumber.activeForeground': '#cdd6f4',
+        'editor.selectionHighlightBackground': 'rgba(137,180,250,0.1)',
+        'editorBracketMatch.background': 'transparent',
+        'editorBracketMatch.border': 'rgba(137,180,250,0.3)',
+        'editorIndentGuide.background': 'rgba(255,255,255,0.05)',
+        'editorIndentGuide.activeBackground': 'rgba(255,255,255,0.1)',
+        'editorGutter.background': '#181825',
+        'editorWidget.background': '#1e1e2e',
+        'editorWidget.border': '#313244',
+      },
     })
-    editorViewRef.current = view
-    return () => {
-      view.destroy()
-      editorViewRef.current = null
+    mon.editor.setTheme('svg-master-dark')
+  }, [])
+
+  const handleEditorChange = useCallback((newValue) => {
+    if (!suppressListenerRef.current && newValue !== undefined) {
+      onChangeRef.current?.(newValue)
     }
   }, [])
 
   useEffect(() => {
-    const view = editorViewRef.current
-    if (!view) return
-    const currentText = view.state.doc.toString()
+    const editor = editorRef.current
+    if (!editor) return
+    const currentText = editor.getValue()
     if (value !== currentText) {
       suppressListenerRef.current = true
-      view.dispatch({
-        changes: { from: 0, to: currentText.length, insert: value },
-      })
+      editor.setValue(value)
       suppressListenerRef.current = false
     }
   })
@@ -359,34 +372,34 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
     setSelectedPath(selectedElement)
   }, [selectedElement])
 
-  useEffect(() => () => {
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-  }, [])
-
   useEffect(() => {
-    if (view === 'raw' && editorViewRef.current) {
-      requestAnimationFrame(() => editorViewRef.current?.requestMeasure())
+    if (view === 'raw' && editorRef.current) {
+      setTimeout(() => editorRef.current?.layout(), 0)
     }
   }, [view])
 
   useImperativeHandle(ref, () => ({
     selectCodeInEditor(htmlString) {
-      const view = editorViewRef.current
-      if (!view || !htmlString) return
-      const code = view.state.doc.toString()
+      const editor = editorRef.current
+      if (!editor || !htmlString) return
+      const model = editor.getModel()
+      if (!model) return
+      const code = model.getValue()
       const idx = code.indexOf(htmlString.trim())
       if (idx !== -1) {
-        view.focus()
-        view.dispatch({
-          selection: { anchor: idx, head: idx + htmlString.trim().length },
-          scrollIntoView: true,
-        })
+        const startPos = model.getPositionAt(idx)
+        const endPos = model.getPositionAt(idx + htmlString.trim().length)
+        editor.focus()
+        editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
+        editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
       }
     },
     selectRange(htmlStrings) {
-      const view = editorViewRef.current
-      if (!view || !htmlStrings || htmlStrings.length === 0) return
-      const code = view.state.doc.toString()
+      const editor = editorRef.current
+      if (!editor || !htmlStrings || htmlStrings.length === 0) return
+      const model = editor.getModel()
+      if (!model) return
+      const code = model.getValue()
       let firstIdx = -1
       let lastEnd = -1
       for (const html of htmlStrings) {
@@ -397,55 +410,75 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
         if (end > lastEnd) lastEnd = end
       }
       if (firstIdx !== -1 && lastEnd !== -1) {
-        view.focus()
-        view.dispatch({
-          selection: { anchor: firstIdx, head: lastEnd },
-          scrollIntoView: true,
-        })
+        const startPos = model.getPositionAt(firstIdx)
+        const endPos = model.getPositionAt(lastEnd)
+        editor.focus()
+        editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
+        editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
       }
     },
     focus() {
-      editorViewRef.current?.focus()
+      editorRef.current?.focus()
     },
     getCursorInfo() {
-      const view = editorViewRef.current
-      if (!view) return null
-      const code = view.state.doc.toString()
-      const pos = view.state.selection.main.from
-      const tag = getTagNameAtPos(code, pos)
-      return { code, pos, tag }
+      const editor = editorRef.current
+      if (!editor) return null
+      const model = editor.getModel()
+      if (!model) return null
+      const code = model.getValue()
+      const position = editor.getPosition()
+      if (!position) return { code, pos: 0, tag: null }
+      const offset = model.getOffsetAt(position)
+      const tag = getTagNameAtPos(code, offset)
+      return { code, pos: offset, tag }
     },
   }))
 
   const handleCodeContextMenu = useCallback((e) => {
     e.preventDefault()
-    const view = editorViewRef.current
-    let tagAtCursor = null
-    if (view) {
-      const coords = view.posAtCoords({ x: e.clientX, y: e.clientY })
-      const clickPos = coords !== null ? coords : view.state.selection.main.from
-      contextClickPosRef.current = clickPos
-      const start = Math.max(0, clickPos - 100)
-      const snippet = view.state.sliceDoc(start, 200)
-      tagAtCursor = getTagNameAtPos(snippet, clickPos - start)
+    e.stopPropagation()
+    const editor = editorRef.current
+    if (!editor) return
+    const model = editor.getModel()
+    if (!model) return
+
+    let cursorOffset = 0
+    try {
+      const target = editor.getTargetAtClientPoint(e.clientX, e.clientY)
+      if (target && target.position) {
+        cursorOffset = model.getOffsetAt(target.position)
+      } else {
+        const pos = editor.getPosition()
+        cursorOffset = pos ? model.getOffsetAt(pos) : 0
+      }
+    } catch {
+      const pos = editor.getPosition()
+      cursorOffset = pos ? model.getOffsetAt(pos) : 0
     }
+    contextClickOffsetRef.current = cursorOffset
+    const code = model.getValue()
+    const tagAtCursor = getTagNameAtPos(code, cursorOffset)
     const mx = Math.min(e.clientX, window.innerWidth - 160)
     const my = Math.min(e.clientY, window.innerHeight - 100)
     setCodeMenu({ x: Math.max(8, mx), y: Math.max(8, my), tagAtCursor })
   }, [])
 
   const expandSelection = useCallback((expandFn) => {
-    const view = editorViewRef.current
-    if (!view) return
-    const code = view.state.doc.toString()
-    const pos = contextClickPosRef.current > -1 ? contextClickPosRef.current : view.state.selection.main.from
-    contextClickPosRef.current = -1
+    const editor = editorRef.current
+    if (!editor) return
+    const model = editor.getModel()
+    if (!model) return
+    const code = model.getValue()
+    const pos = contextClickOffsetRef.current > -1
+      ? contextClickOffsetRef.current
+      : model.getOffsetAt(editor.getPosition() || { lineNumber: 1, column: 1 })
+    contextClickOffsetRef.current = -1
     const range = expandFn(code, pos)
     if (range) {
-      view.dispatch({
-        selection: { anchor: range.from, head: range.to },
-        scrollIntoView: true,
-      })
+      const startPos = model.getPositionAt(range.from)
+      const endPos = model.getPositionAt(range.to)
+      editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
+      editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
     }
   }, [])
 
@@ -476,47 +509,53 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
   }, [])
 
   const handleCodeCopy = useCallback(() => {
-    const view = editorViewRef.current
-    if (!view) return
-    const { from, to } = view.state.selection.main
-    if (from === to) return
-    const text = view.state.sliceDoc(from, to)
-    navigator.clipboard.writeText(text).catch(() => {})
+    const editor = editorRef.current
+    if (!editor) return
+    const selection = editor.getSelection()
+    if (!selection) return
+    const text = editor.getModel()?.getValueInRange(selection)
+    if (text) navigator.clipboard.writeText(text).catch(() => {})
   }, [])
 
   const handleCodeCut = useCallback(() => {
-    const view = editorViewRef.current
-    if (!view) return
-    const { from, to } = view.state.selection.main
-    if (from === to) return
-    const text = view.state.sliceDoc(from, to)
-    navigator.clipboard.writeText(text).catch(() => {})
-    view.dispatch({ changes: { from, to } })
+    const editor = editorRef.current
+    if (!editor) return
+    const selection = editor.getSelection()
+    if (!selection) return
+    const text = editor.getModel()?.getValueInRange(selection)
+    if (text) {
+      navigator.clipboard.writeText(text).catch(() => {})
+      editor.executeEdits('cut', [{ range: selection, text: '' }])
+    }
   }, [])
 
   const handleCodePaste = useCallback(async () => {
-    const view = editorViewRef.current
-    if (!view) return
+    const editor = editorRef.current
+    if (!editor) return
     try {
       const text = await navigator.clipboard.readText()
-      const { from, to } = view.state.selection.main
-      view.dispatch({ changes: { from, to, insert: text } })
+      const selection = editor.getSelection()
+      if (selection) {
+        editor.executeEdits('paste', [{ range: selection, text }])
+      }
     } catch {}
   }, [])
 
   const handleTreeSelect = useCallback((el, tagStr) => {
     setSelectedPath(el)
     const htmlStr = el.outerHTML || `<${tagStr}></${el.tagName.toLowerCase()}>`
-    const view = editorViewRef.current
-    if (view) {
-      const code = view.state.doc.toString()
-      const idx = code.indexOf(htmlStr.trim())
-      if (idx !== -1) {
-        view.dispatch({
-          selection: { anchor: idx, head: idx + htmlStr.trim().length },
-          scrollIntoView: true,
-        })
-      }
+    const editor = editorRef.current
+    if (!editor) return
+    const model = editor.getModel()
+    if (!model) return
+    const code = model.getValue()
+    const idx = code.indexOf(htmlStr.trim())
+    if (idx !== -1) {
+      const startPos = model.getPositionAt(idx)
+      const endPos = model.getPositionAt(idx + htmlStr.trim().length)
+      editor.focus()
+      editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
+      editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
     }
     onCodeSelectElement?.(htmlStr)
   }, [onCodeSelectElement])
@@ -534,7 +573,35 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
         <span className="code-header-hint">{hint || viewHint}</span>
       </div>
       <div className="code-editor-container" style={{ display: view === 'raw' ? 'flex' : 'none' }} onContextMenu={handleCodeContextMenu}>
-        <div ref={editorContainerRef} className="code-mirror-container" />
+        <div className="code-mirror-container">
+          <Editor
+            height="100%"
+            defaultLanguage="html"
+            defaultValue={value}
+            theme="svg-master-dark"
+            onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
+            options={{
+              fontSize: 12,
+              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+              lineNumbers: 'on',
+              minimap: { enabled: false },
+              automaticLayout: true,
+              scrollBeyondLastLine: false,
+              wordWrap: 'off',
+              tabSize: 2,
+              renderWhitespace: 'selection',
+              folding: true,
+              contextmenu: false,
+              suggestOnTriggerCharacters: false,
+              quickSuggestions: false,
+              renderLineHighlight: 'line',
+              cursorBlinking: 'smooth',
+              smoothScrolling: true,
+              padding: { top: 12, bottom: 12 },
+            }}
+          />
+        </div>
       </div>
       {view === 'tree' && (
         <div className="code-tree-container" onContextMenu={handleCodeContextMenu}>
