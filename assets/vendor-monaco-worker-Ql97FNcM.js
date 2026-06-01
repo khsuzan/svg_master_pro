@@ -1,0 +1,1 @@
+function e(e){return new Worker(`/svg_master_pro/assets/editor.worker-Cn2oRESe.js`,{name:e?.name})}export{e as t};
