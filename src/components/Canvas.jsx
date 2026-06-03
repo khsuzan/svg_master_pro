@@ -285,7 +285,11 @@ function Canvas({
 
   const selectElement = useCallback((el, shiftKey) => {
     if (shiftKey) {
-      selectedRefs.current.delete(el)
+      if (selectedRefs.current.has(el)) {
+        selectedRefs.current.delete(el)
+      } else {
+        selectedRefs.current.add(el)
+      }
     } else {
       selectedRefs.current.clear()
       selectedRefs.current.add(el)
@@ -1047,7 +1051,7 @@ function Canvas({
       }
     } else if (effectiveTool === 'path-select') {
       const matched = pathTagFilter === 'any'
-        ? (isLeafElement(target) || isGroupElement(target) ? target : null)
+        ? (isLeafElement(target) ? target : null)
         : findNearestByTag(target, pathTagFilter)
       if (matched) {
         selectElement(matched, e.shiftKey)
