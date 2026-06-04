@@ -5,6 +5,7 @@ import CodePanel from './components/CodePanel'
 import LayerPanel from './components/LayerPanel'
 import Canvas from './components/Canvas'
 import ContextMenu from './components/ContextMenu'
+import CssPanel from './components/CssPanel'
 import GroupModal from './components/GroupModal'
 import ArtboardModal from './components/ArtboardModal'
 import ConfirmModal from './components/ConfirmModal'
@@ -47,15 +48,11 @@ export default function App() {
   const [pathTagFilter, setPathTagFilter] = useState('any')
   const [visualCssEnabled, setVisualCssEnabled] = useState(false)
   const [cssContent, setCssContent] = useState('')
-  const [cssModalOpen, setCssModalOpen] = useState(false)
-  const [cssDraft, setCssDraft] = useState('')
-  const [cssDraftEnabled, setCssDraftEnabled] = useState(false)
   const [cssPseudoDisabled, setCssPseudoDisabled] = useState(false)
   const [brushSize, setBrushSize] = useState(30)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [saveFileName, setSaveFileName] = useState('')
   const saveInputRef = useRef(null)
-  const cssImportRef = useRef(null)
   const [transientTool, setTransientTool] = useState(null)
   const [removalModal, setRemovalModal] = useState({ visible: false, tagSelector: 'g, div, section', count: 0 })
 
@@ -119,6 +116,7 @@ export default function App() {
     if (!el) return
     if (document.contains(el)) {
       actionsRef.current?.selectElementRef(el)
+      actionsRef.current?.centerOnElement(el)
     } else {
       actionsRef.current?.selectByOuterHTML(el.outerHTML)
     }
@@ -181,7 +179,7 @@ export default function App() {
     : activeTool === 'path-select' ? `Click to select${tagHint} · Right-click tool for tag filter`
       : activeTool === 'zoom' ? 'Scroll to zoom · Ctrl+click to zoom out'
         : activeTool === 'brush-select' ? `Drag to paint-select${tagHint} · [ ] to resize brush · Shift to subtract · Right-click tool for tag filter`
-          : activeTool === 'rotate' ? `Click to select · Drag corner to rotate · Shift+drag for 15° increments${tagHint}` : ''
+          : activeTool === 'rotate' ? `Click to select · Drag corner to rotate · Shift+drag for 10° increments${tagHint}` : ''
 
   const callAction = useCallback((name, ...args) => {
     if (actionsRef.current && typeof actionsRef.current[name] === 'function') {
@@ -225,6 +223,11 @@ export default function App() {
 
   const handleTransientChange = useCallback((tool) => {
     setTransientTool(tool)
+  }, [])
+
+  const handleCssChange = useCallback(({ cssContent: content, visualCssEnabled: enabled }) => {
+    setCssContent(content)
+    setVisualCssEnabled(enabled)
   }, [])
 
   const handleEmptyGroupRemoval = useCallback((tagSelector) => {
@@ -341,10 +344,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (cssModalOpen) setCssDraft(cssContent)
-  }, [cssContent, cssModalOpen])
-
-  useEffect(() => {
     if (suppressHistoryRef.current || !initialLoadDoneRef.current) return
     setHistory((prev) => {
       const trimmed = prev.slice(0, historyIndex + 1)
@@ -457,6 +456,15 @@ export default function App() {
                 </svg>
                 Code
               </button>
+              <button
+                className={`left-panel-tab ${leftPanelTab === 'css' ? 'active' : ''}`}
+                onClick={() => setLeftPanelTab('css')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /><line x1="4" y1="4" x2="9" y2="9" />
+                </svg>
+                CSS
+              </button>
             </div>
             <div className={`left-panel-content${leftPanelTab === 'layers' ? '' : ' left-panel-hidden'}`}>
               <LayerPanel
@@ -474,6 +482,15 @@ export default function App() {
                 onChange={handleCodeChange}
                 onCodeSelectElement={handleCodeSelectElement}
                 hint={toolHint}
+              />
+            </div>
+            <div className={`left-panel-content${leftPanelTab === 'css' ? '' : ' left-panel-hidden'}`}>
+              <CssPanel
+                cssContent={cssContent}
+                visualCssEnabled={visualCssEnabled}
+                cssPseudoDisabled={cssPseudoDisabled}
+                onCssChange={handleCssChange}
+                onTogglePseudoEffects={() => setCssPseudoDisabled((v) => !v)}
               />
             </div>
           </div>
@@ -512,21 +529,12 @@ export default function App() {
         onDelete={performDelete}
         onDeleteAll={performDeleteAll}
         onDeleteUnselected={performDeleteUnselected}
-        onExtract={performExtract}
-        onCopy={performCopy}
-        onCut={performCut}
-        onPaste={performPaste}
-        onGroup={performGroup}
         onCleanEmptyGroups={performCleanEmptyGroups}
         onCleanEmptyAll={performCleanEmptyAll}
         onEmptyGroupRemoval={handleEmptyGroupRemoval}
         onToggleFormat={performToggleFormat}
         onClearSelections={performClearSelections}
         codePrettified={codePrettified}
-        canDelete={selectedCount > 0}
-        canExtract={selectedCount > 0}
-        canCopy={selectedCount > 0}
-        canPaste={clipboardSize > 0}
         clipboardSize={clipboardSize}
         onSave={handleSaveSvg}
         onZoomToContent={performZoomToContent}
@@ -535,10 +543,6 @@ export default function App() {
         onRotateSelected={performRotateSelected}
         pathTagFilter={pathTagFilter}
         onPathTagFilterChange={setPathTagFilter}
-        visualCssEnabled={visualCssEnabled}
-        onTogglePseudoEffects={() => setCssPseudoDisabled((v) => !v)}
-        cssPseudoDisabled={cssPseudoDisabled}
-        onOpenCssModal={() => { setCssDraft(cssContent); setCssDraftEnabled(visualCssEnabled); setCssModalOpen(true) }}
         brushSize={brushSize}
         onBrushSizeChange={setBrushSize}
       />
@@ -555,7 +559,6 @@ export default function App() {
         onCopy={performCopy}
         onCut={performCut}
         onPaste={performPaste}
-        onExtract={performExtract}
         onSnapToCode={performSnapToCode}
         onCanvasSize={handleCanvasSize}
         onCanvasSizing={handleCanvasSizing}
@@ -586,76 +589,6 @@ export default function App() {
         onConfirm={confirmEmptyGroupRemoval}
         onCancel={cancelEmptyGroupRemoval}
       />
-
-      {cssModalOpen && (
-        <div className="modal-backdrop" onClick={() => setCssModalOpen(false)}>
-          <div className="css-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>CSS Injection</h3>
-              <button className="modal-close" onClick={() => setCssModalOpen(false)}>&times;</button>
-            </div>
-            <div className="modal-body">
-              <div className="css-modal-status">
-                <span className="css-status-label">CSS Active</span>
-                <label className="css-toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={cssDraftEnabled}
-                    onChange={() => setCssDraftEnabled((v) => !v)}
-                  />
-                  <span className="css-toggle-slider" />
-                </label>
-              </div>
-              <textarea
-                className="css-modal-textarea"
-                value={cssDraft}
-                onChange={(e) => setCssDraft(e.target.value)}
-                placeholder={`/* Write SVG CSS here */\n* { outline: 1px solid red; }\n*:hover { fill: rgba(0,153,255,0.15) !important; stroke: #09f !important; }`}
-                spellCheck={false}
-              />
-              <input
-                ref={cssImportRef}
-                type="file"
-                accept=".css"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) {
-                    const reader = new FileReader()
-                    reader.onload = () => {
-                      setCssDraft(reader.result)
-                      setCssDraftEnabled(true)
-                    }
-                    reader.readAsText(file)
-                  }
-                  e.target.value = ''
-                }}
-              />
-            </div>
-            <div className="modal-footer">
-              <button className="modal-btn modal-btn-cancel" onClick={() => setCssModalOpen(false)}>Cancel</button>
-              <button className="modal-btn modal-btn-secondary" onClick={() => cssImportRef.current?.click()}>
-                Import CSS
-              </button>
-              {cssDraft && (
-                <button className="modal-btn modal-btn-danger-outline" onClick={() => { setCssDraft(''); setCssDraftEnabled(false) }}>
-                  Remove
-                </button>
-              )}
-              <button
-                className="modal-btn modal-btn-save"
-                onClick={() => {
-                  setCssContent(cssDraft)
-                  setVisualCssEnabled(cssDraftEnabled)
-                  setCssModalOpen(false)
-                }}
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {saveModalOpen && (
         <div className="modal-backdrop" onClick={() => setSaveModalOpen(false)}>

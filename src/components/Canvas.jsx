@@ -348,6 +348,19 @@ function Canvas({
     onSelectionUpdate?.(selectedRefs.current)
     applySelectionStyles()
     updateOverlayPositions()
+    if (!shiftKey && selectedRefs.current.size === 1) {
+      const el = selectedRefs.current.values().next().value
+      if (el && document.contains(el)) {
+        const t = el.getAttribute('transform') || ''
+        const m = t.match(/rotate\s*\(([^)]+)\)/)
+        if (m) {
+          const a = parseFloat(m[1].trim().split(/[\s,]+/)[0]) || 0
+          setRotationAngle(((a % 360) + 360) % 360)
+        } else {
+          setRotationAngle(0)
+        }
+      }
+    }
   }, [selectedRefs, onSelectionChange, onSelectionUpdate, applySelectionStyles, updateOverlayPositions])
 
   const clearSelection = useCallback(() => {
@@ -356,6 +369,7 @@ function Canvas({
     onSelectionUpdate?.(selectedRefs.current)
     setOverlays([])
     applySelectionStyles()
+    setRotationAngle(0)
   }, [selectedRefs, onSelectionChange, onSelectionUpdate, applySelectionStyles])
 
   const performDelete = useCallback(() => {
@@ -607,9 +621,9 @@ function Canvas({
       let delta = currentAngle - rotationStartRef.current
       let newAngle = rotationInitialRef.current + delta
       
-      // Precise rotation with Shift: snap to 15-degree increments
+      // Precise rotation with Shift: snap to 10-degree increments
       if (ev.shiftKey || isShiftKey) {
-        newAngle = Math.round(newAngle / 15) * 15
+        newAngle = Math.round(newAngle / 10) * 10
       }
       
       // Normalize angle to 0-360 range
@@ -766,6 +780,17 @@ function Canvas({
             const half = CANVAS_SIZE / 2
             scrollEl.scrollTo({ left: half - vs.w / 2, top: half - vs.h / 2, behavior: 'smooth' })
           }
+        },
+        centerOnElement: (el) => {
+          const scrollEl = wrapperRef.current?.querySelector('.canvas-scroll')
+          if (!scrollEl || !document.contains(el)) return
+          try {
+            const contentRect = containerRef.current.getBoundingClientRect()
+            const elRect = el.getBoundingClientRect()
+            const cx = elRect.left + elRect.width / 2 - contentRect.left
+            const cy = elRect.top + elRect.height / 2 - contentRect.top
+            scrollEl.scrollTo({ left: Math.max(0, cx - scrollEl.clientWidth / 2), top: Math.max(0, cy - scrollEl.clientHeight / 2), behavior: 'smooth' })
+          } catch {}
         },
         activateRectZoom: () => {
           rectZoomRef.current = true
@@ -1592,7 +1617,7 @@ function Canvas({
                             height: 16,
                             '--rotate-angle': angle + 'deg',
                           }}
-                          title={`Drag to rotate (Shift for 15° increments)`}
+                          title={`Drag to rotate (Shift for 10° increments)`}
                         />
                       )
                     })}
@@ -1611,7 +1636,7 @@ function Canvas({
                     />
                     <div
                       className="rotation-handle"
-                      title="Drag to rotate (Shift for 15° increments)"
+                      title="Drag to rotate (Shift for 10° increments)"
                       onMouseDown={startRotation}
                       style={{
                         position: 'absolute',

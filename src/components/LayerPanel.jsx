@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, memo } from 'react'
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, memo } from 'react'
 
 function computeElementPath(el) {
   const path = []
@@ -127,7 +127,6 @@ const LayerItem = memo(function LayerItem({
   node,
   depth,
   selectedPath,
-  selectedRef,
   onSelect,
   onOpenProperties,
   onOpenContextMenu,
@@ -138,11 +137,11 @@ const LayerItem = memo(function LayerItem({
   const hasChildren = node.children.length > 0
   const itemRef = useRef(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isSelected && itemRef.current) {
-      selectedRef(itemRef.current)
+      itemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
-  })
+  }, [isSelected])
 
   const handleClick = useCallback((e) => {
     e.stopPropagation()
@@ -195,7 +194,6 @@ const LayerItem = memo(function LayerItem({
               node={child}
               depth={depth + 1}
               selectedPath={selectedPath}
-              selectedRef={selectedRef}
               onSelect={onSelect}
               onOpenProperties={onOpenProperties}
               onOpenContextMenu={onOpenContextMenu}
@@ -215,7 +213,6 @@ function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMen
   const [selectedPath, setSelectedPath] = useState(null)
   const [searchText, setSearchText] = useState('')
   const scrollRef = useRef(null)
-  const selectedNodeRef = useRef(null)
 
   useEffect(() => {
     const temp = document.createElement('div')
@@ -250,16 +247,6 @@ function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMen
       setSelectedPath(null)
     }
   }, [selectedElement, layers])
-
-  const handleSelectedRef = useCallback((node) => {
-    selectedNodeRef.current = node
-  }, [])
-
-  useEffect(() => {
-    if (selectedNodeRef.current && scrollRef.current) {
-      selectedNodeRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [selectedPath])
 
   const handleSelect = useCallback((el) => {
     onLayerSelect(el)
@@ -319,7 +306,6 @@ function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMen
               node={node}
               depth={0}
               selectedPath={selectedPath}
-              selectedRef={handleSelectedRef}
               onSelect={handleSelect}
               onOpenProperties={onOpenProperties}
               onOpenContextMenu={onOpenContextMenu}

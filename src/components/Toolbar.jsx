@@ -9,21 +9,12 @@ export default function Toolbar({
   onDelete,
   onDeleteAll,
   onDeleteUnselected,
-  onExtract,
-  onCopy,
-  onCut,
-  onPaste,
-  onGroup,
   onCleanEmptyGroups,
   onCleanEmptyAll,
   onEmptyGroupRemoval,
   onToggleFormat,
   onClearSelections,
   codePrettified,
-  canDelete,
-  canExtract,
-  canCopy,
-  canPaste,
   clipboardSize,
   onSave,
   onZoomToContent,
@@ -32,10 +23,6 @@ export default function Toolbar({
   onRotateSelected,
   pathTagFilter = 'any',
   onPathTagFilterChange,
-  visualCssEnabled,
-  onOpenCssModal,
-  onTogglePseudoEffects,
-  cssPseudoDisabled,
   brushSize = 30,
   onBrushSizeChange,
 }) {
@@ -43,9 +30,7 @@ export default function Toolbar({
   const [tagMenuOpen, setTagMenuOpen] = useState(false)
   const [deleteMenuOpen, setDeleteMenuOpen] = useState(false)
   const [cleanMenuOpen, setCleanMenuOpen] = useState(false)
-  const [removalMenuOpen, setRemovalMenuOpen] = useState(false)
   const [rotateMenuOpen, setRotateMenuOpen] = useState(false)
-  const [cssMenuOpen, setCssMenuOpen] = useState(false)
   const [brushMenuOpen, setBrushMenuOpen] = useState(false)
 
   const COMMON_SVG_TAGS = ['a', 'circle', 'ellipse', 'g', 'image', 'line', 'path', 'polygon', 'polyline', 'rect', 'text', 'tspan', 'use']
@@ -345,98 +330,26 @@ export default function Toolbar({
 
           <div className="toolbar-floating-sep" />
 
-          <button
-            className="tool-floating-btn"
-            onClick={onCopy}
-            disabled={!canCopy}
-            title="Copy (Ctrl+C)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-            </svg>
-          </button>
-          <button
-            className="tool-floating-btn"
-            onClick={onCut}
-            disabled={!canCopy}
-            title="Cut (Ctrl+X)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
-              <line x1="8.12" y1="8.12" x2="15.88" y2="15.88" />
-              <line x1="15.88" y1="8.12" x2="8.12" y2="15.88" />
-            </svg>
-          </button>
-          <button
-            className="tool-floating-btn"
-            onClick={onPaste}
-            disabled={!canPaste}
-            title="Paste (Ctrl+V)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" />
-              <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
-            </svg>
-          </button>
-          <button
-            className="tool-floating-btn"
-            onClick={onDelete}
-            disabled={!canDelete}
-            title="Delete (Del)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-            </svg>
-          </button>
-
-          <div className="toolbar-floating-sep" />
-
-          <button
-            className="tool-floating-btn"
-            onClick={onExtract}
-            disabled={!canExtract}
-            title="Extract (Ctrl+E)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </button>
-          <button
-            className="tool-floating-btn"
-            onClick={onGroup}
-            disabled={!canExtract}
-            title="Group (Ctrl+G)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" />
-              <rect x="14" y="3" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" />
-              <rect x="14" y="14" width="7" height="7" />
-            </svg>
-          </button>
 
           <div className="toolbar-floating-sep" />
 
           <div className="toolbar-select-wrapper">
             <button
               className="tool-floating-btn"
-              onClick={onCleanEmptyGroups}
-              onContextMenu={(e) => { e.preventDefault(); setCleanMenuOpen((v) => !v) }}
-              title="Clean empty groups · Right-click for more options"
+              onClick={() => setCleanMenuOpen((v) => !v)}
+              title="Clean / Remove empty groups"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 6L8 20" /><path d="M2 6l14 14" />
+                <path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5z" />
               </svg>
             </button>
             {cleanMenuOpen && (
               <>
                 <div className="toolbar-dropdown-backdrop" onClick={() => setCleanMenuOpen(false)} />
-                <div className="toolbar-dropdown">
+                <div className="toolbar-dropdown" style={{ minWidth: 200 }}>
+                  <div className="toolbar-dropdown-label">Clean (no confirmation)</div>
                   <button className="toolbar-dropdown-item" onClick={() => { onCleanEmptyGroups?.('g, div, section'); setCleanMenuOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5z" /></svg>
                     Empty groups
                   </button>
                   <button className="toolbar-dropdown-item" onClick={() => { onCleanEmptyGroups?.('g'); setCleanMenuOpen(false) }}>
@@ -451,53 +364,18 @@ export default function Toolbar({
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                     Empty &lt;defs&gt;
                   </button>
-                  <div className="toolbar-dropdown-sep" />
                   <button className="toolbar-dropdown-item" onClick={() => { onCleanEmptyAll?.(); setCleanMenuOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 6L8 20" /><path d="M2 6l14 14" /></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5z" /><line x1="22" y1="22" x2="18" y2="18" /></svg>
                     All empty elements
                   </button>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="toolbar-select-wrapper">
-            <button
-              className="tool-floating-btn"
-              onClick={() => onEmptyGroupRemoval?.()}
-              onContextMenu={(e) => { e.preventDefault(); setRemovalMenuOpen((v) => !v) }}
-              title="Remove empty groups (with confirmation) · Right-click for tag options"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" />
-                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                <circle cx="12" cy="14" r="1" />
-                <line x1="12" y1="11" x2="12" y2="10" />
-              </svg>
-            </button>
-            {removalMenuOpen && (
-              <>
-                <div className="toolbar-dropdown-backdrop" onClick={() => setRemovalMenuOpen(false)} />
-                <div className="toolbar-dropdown">
-                  <button className="toolbar-dropdown-item" onClick={() => { onEmptyGroupRemoval?.('g, div, section'); setRemovalMenuOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+                  <div className="toolbar-dropdown-sep" />
+                  <div className="toolbar-dropdown-label">Remove (with confirmation)</div>
+                  <button className="toolbar-dropdown-item" onClick={() => { onEmptyGroupRemoval?.('g, div, section'); setCleanMenuOpen(false) }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
                     Empty groups
                   </button>
-                  <button className="toolbar-dropdown-item" onClick={() => { onEmptyGroupRemoval?.('g'); setRemovalMenuOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /></svg>
-                    Empty &lt;g&gt;
-                  </button>
-                  <button className="toolbar-dropdown-item" onClick={() => { onEmptyGroupRemoval?.('a'); setRemovalMenuOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M22 12c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2c1.86 0 3.6.51 5.1 1.4" /></svg>
-                    Empty &lt;a&gt;
-                  </button>
-                  <button className="toolbar-dropdown-item" onClick={() => { onEmptyGroupRemoval?.('defs'); setRemovalMenuOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-                    Empty &lt;defs&gt;
-                  </button>
-                  <div className="toolbar-dropdown-sep" />
-                  <button className="toolbar-dropdown-item" onClick={() => { onEmptyGroupRemoval?.('*'); setRemovalMenuOpen(false) }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 6L8 20" /><path d="M2 6l14 14" /></svg>
+                  <button className="toolbar-dropdown-item" onClick={() => { onEmptyGroupRemoval?.('*'); setCleanMenuOpen(false) }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
                     All empty elements
                   </button>
                 </div>
@@ -508,12 +386,12 @@ export default function Toolbar({
           <button
             className="tool-floating-btn"
             onClick={onSave}
-            title="Save as SVG file"
+            title="Export SVG file"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
-              <polyline points="17 21 17 13 7 13 7 21" />
-              <polyline points="7 3 7 8 15 8" />
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </button>
 
@@ -537,46 +415,7 @@ export default function Toolbar({
             )}
           </button>
 
-          <div className="toolbar-select-wrapper">
-            <button
-              className={`tool-floating-btn${visualCssEnabled ? ' active' : ''}`}
-              onClick={onOpenCssModal}
-              onContextMenu={(e) => { e.preventDefault(); setCssMenuOpen((v) => !v) }}
-              title={visualCssEnabled ? 'CSS active · Click to edit' : 'CSS · Click to edit'}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16 3 21 3 21 8" />
-                <line x1="4" y1="20" x2="21" y2="3" />
-                <polyline points="21 16 21 21 16 21" />
-                <line x1="15" y1="15" x2="21" y2="21" />
-                <line x1="4" y1="4" x2="9" y2="9" />
-              </svg>
-            </button>
-            {cssMenuOpen && (
-              <>
-                <div className="toolbar-dropdown-backdrop" onClick={() => setCssMenuOpen(false)} />
-                <div className="toolbar-dropdown">
-                  <button className="toolbar-dropdown-item" onClick={() => { setCssMenuOpen(false); onOpenCssModal?.(); }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
-                    Write CSS
-                  </button>
-                  <div className="toolbar-dropdown-sep" />
-                  <label className="toolbar-dropdown-item css-context-toggle">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                    Disable hover effects
-                    <span className="css-context-switch">
-                      <input
-                        type="checkbox"
-                        checked={cssPseudoDisabled}
-                        onChange={onTogglePseudoEffects}
-                      />
-                      <span className="css-context-slider" />
-                    </span>
-                  </label>
-                </div>
-              </>
-            )}
-          </div>
+
         </div>
       </div>
 
