@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { saveState, loadState } from './utils/storage'
 import Toolbar from './components/Toolbar'
 import CodePanel from './components/CodePanel'
+import LayerPanel from './components/LayerPanel'
 import Canvas from './components/Canvas'
 import ContextMenu from './components/ContextMenu'
 import GroupModal from './components/GroupModal'
@@ -39,6 +40,7 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, hasSelection: false })
   const [groupModal, setGroupModal] = useState({ visible: false, target: null })
   const [codePanelVisible, setCodePanelVisible] = useState(true)
+  const [leftPanelTab, setLeftPanelTab] = useState('layers')
   const [selectedElement, setSelectedElement] = useState(null)
   const [artboardModal, setArtboardModal] = useState({ visible: false })
   const [parsing, setParsing] = useState(false)
@@ -113,6 +115,15 @@ export default function App() {
     }
   }, [])
 
+  const handleLayerSelect = useCallback((el) => {
+    if (!el) return
+    if (document.contains(el)) {
+      actionsRef.current?.selectElementRef(el)
+    } else {
+      actionsRef.current?.selectByOuterHTML(el.outerHTML)
+    }
+  }, [])
+
   const handleCanvasSize = useCallback(() => {
     setArtboardModal({ visible: true })
     setContextMenu((prev) => ({ ...prev, visible: false }))
@@ -165,10 +176,12 @@ export default function App() {
     setCodePanelVisible((v) => !v)
   }, [])
 
-  const toolHint = activeTool === 'select' ? 'Click to select · Drag to marquee'
-    : activeTool === 'path-select' ? `Click to select ${pathTagFilter === 'any' ? 'any element' : `<${pathTagFilter}>`} · Right-click tool for tag filter`
+  const tagHint = pathTagFilter === 'any' ? '' : ` <${pathTagFilter}>`
+  const toolHint = activeTool === 'select' ? `Click to select${tagHint} · Drag to marquee · Right-click tool for tag filter`
+    : activeTool === 'path-select' ? `Click to select${tagHint} · Right-click tool for tag filter`
       : activeTool === 'zoom' ? 'Scroll to zoom · Ctrl+click to zoom out'
-        : activeTool === 'brush-select' ? 'Drag to paint-select · [ ] to resize brush · Shift to subtract' : ''
+        : activeTool === 'brush-select' ? `Drag to paint-select${tagHint} · [ ] to resize brush · Shift to subtract · Right-click tool for tag filter`
+          : activeTool === 'rotate' ? `Click to select · Drag corner to rotate · Shift+drag for 15° increments${tagHint}` : ''
 
   const callAction = useCallback((name, ...args) => {
     if (actionsRef.current && typeof actionsRef.current[name] === 'function') {
@@ -425,14 +438,44 @@ export default function App() {
       <div className="workspace">
         {codePanelVisible && (
           <div className="panel panel-left">
-            <CodePanel
-              ref={codePanelRef}
-              value={htmlCode}
-              onChange={handleCodeChange}
-              selectedElement={selectedElement}
-              onCodeSelectElement={handleCodeSelectElement}
-              hint={toolHint}
-            />
+            <div className="left-panel-header">
+              <button
+                className={`left-panel-tab ${leftPanelTab === 'layers' ? 'active' : ''}`}
+                onClick={() => setLeftPanelTab('layers')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />
+                </svg>
+                Layers
+              </button>
+              <button
+                className={`left-panel-tab ${leftPanelTab === 'code' ? 'active' : ''}`}
+                onClick={() => setLeftPanelTab('code')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+                </svg>
+                Code
+              </button>
+            </div>
+            <div className={`left-panel-content${leftPanelTab === 'layers' ? '' : ' left-panel-hidden'}`}>
+              <LayerPanel
+                htmlCode={htmlCode}
+                selectedElement={selectedElement}
+                onLayerSelect={handleLayerSelect}
+                onOpenContextMenu={handleOpenContextMenu}
+                onOpenProperties={handleOpenGroupModal}
+              />
+            </div>
+            <div className={`left-panel-content${leftPanelTab === 'code' ? '' : ' left-panel-hidden'}`}>
+              <CodePanel
+                ref={codePanelRef}
+                value={htmlCode}
+                onChange={handleCodeChange}
+                onCodeSelectElement={handleCodeSelectElement}
+                hint={toolHint}
+              />
+            </div>
           </div>
         )}
         <div className={`panel panel-right ${!codePanelVisible ? 'panel-full' : ''}`}>

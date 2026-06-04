@@ -40,13 +40,15 @@ export default function Toolbar({
   onBrushSizeChange,
 }) {
   const [zoomMenuOpen, setZoomMenuOpen] = useState(false)
-  const [pathMenuOpen, setPathMenuOpen] = useState(false)
+  const [tagMenuOpen, setTagMenuOpen] = useState(false)
   const [deleteMenuOpen, setDeleteMenuOpen] = useState(false)
   const [cleanMenuOpen, setCleanMenuOpen] = useState(false)
   const [removalMenuOpen, setRemovalMenuOpen] = useState(false)
   const [rotateMenuOpen, setRotateMenuOpen] = useState(false)
   const [cssMenuOpen, setCssMenuOpen] = useState(false)
   const [brushMenuOpen, setBrushMenuOpen] = useState(false)
+
+  const COMMON_SVG_TAGS = ['a', 'circle', 'ellipse', 'g', 'image', 'line', 'path', 'polygon', 'polyline', 'rect', 'text', 'tspan', 'use']
   const tools = [
     {
       id: 'select',
@@ -146,39 +148,7 @@ export default function Toolbar({
       <div className="toolbar-floating">
         <div className="toolbar-floating-group">
           {tools.map((tool) => (
-            tool.id === 'path-select' ? (
-              <div key={tool.id} className="toolbar-select-wrapper">
-                <button
-                  className={`tool-floating-btn ${activeTool === tool.id ? 'active' : ''}`}
-                  onClick={() => onToolChange(tool.id)}
-                  onContextMenu={(e) => { e.preventDefault(); setPathMenuOpen((v) => !v) }}
-                  title={`${tool.label} (${tool.shortcut}) · Right-click for tag filter`}
-                >
-                  {tool.icon}
-                </button>
-                {pathMenuOpen && (
-                  <>
-                    <div className="toolbar-dropdown-backdrop" onClick={() => setPathMenuOpen(false)} />
-                    <div className="toolbar-dropdown">
-                      {['any', 'a', 'g', 'path'].map((tag) => (
-                        <button
-                          key={tag}
-                          className={`toolbar-dropdown-item${pathTagFilter === tag ? ' selected' : ''}`}
-                          onClick={() => { onPathTagFilterChange?.(tag); setPathMenuOpen(false) }}
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            {pathTagFilter === tag
-                              ? <><polyline points="20 6 9 17 4 12" /></>
-                              : <><circle cx="12" cy="12" r="9" /></>}
-                          </svg>
-                          {tag === 'any' ? 'Any element' : `<${tag}>`}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : tool.id === 'delete-tool' ? (
+            tool.id === 'delete-tool' ? (
               <div key={tool.id} className="toolbar-select-wrapper">
                 <button
                   className={`tool-floating-btn ${activeTool === tool.id ? 'active' : ''}`}
@@ -325,6 +295,53 @@ export default function Toolbar({
               </button>
             )
           ))}
+
+          <div className="toolbar-select-wrapper" style={{ position: 'relative' }}>
+            <button
+              className={`tool-floating-btn${pathTagFilter !== 'any' ? ' active' : ''}`}
+              onClick={() => setTagMenuOpen((v) => !v)}
+              title={`Tag filter: ${pathTagFilter === 'any' ? 'any element' : `<${pathTagFilter}>`}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+              </svg>
+              {pathTagFilter !== 'any' && <span className="toolbar-tag-badge">&lt;{pathTagFilter}&gt;</span>}
+            </button>
+            {tagMenuOpen && (
+              <>
+                <div className="toolbar-dropdown-backdrop" onClick={() => setTagMenuOpen(false)} />
+                <div className="toolbar-dropdown toolbar-tag-dropdown">
+                  <div className="toolbar-tag-input-row">
+                    <span className="toolbar-tag-input-prefix">&lt;</span>
+                    <input
+                      className="toolbar-tag-input"
+                      type="text"
+                      value={pathTagFilter === 'any' ? '' : pathTagFilter}
+                      onChange={(e) => {
+                        const val = e.target.value.trim()
+                        onPathTagFilterChange?.(val || 'any')
+                      }}
+                      placeholder="any"
+                      autoFocus
+                    />
+                    <span className="toolbar-tag-input-suffix">&gt;</span>
+                  </div>
+                  <div className="toolbar-tag-presets">
+                    {COMMON_SVG_TAGS.map((tag) => (
+                      <button
+                        key={tag}
+                        className={`toolbar-tag-chip${pathTagFilter === tag ? ' selected' : ''}`}
+                        onClick={() => { onPathTagFilterChange?.(tag); setTagMenuOpen(false) }}
+                      >
+                        &lt;{tag}&gt;
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           <div className="toolbar-floating-sep" />
 

@@ -1,7 +1,6 @@
 import { useRef, useState, useEffect, useCallback, memo, useLayoutEffect } from 'react'
 import {
   isLeafElement,
-  getLeafElementsInRect,
   findNearestPath,
   findNearestByTag,
   isGroupElement,
@@ -78,6 +77,49 @@ function getElementsInBrush(container, cx, cy, radius) {
   return result
 }
 
+function getFilteredElementsInRect(container, rect, tag) {
+  const svg = container.querySelector('svg')
+  if (!svg) return []
+  const containerRect = container.getBoundingClientRect()
+  const all = svg.querySelectorAll('*')
+  const result = []
+  for (const el of all) {
+    if (el.tagName !== el.tagName.toLowerCase()) continue
+    const elTag = el.tagName.toLowerCase()
+    if (tag !== 'any' && elTag !== tag) continue
+    if (tag === 'any' && el.children.length > 0) continue
+    const elRect = el.getBoundingClientRect()
+    const l = elRect.left - containerRect.left
+    const t = elRect.top - containerRect.top
+    const r = elRect.right - containerRect.left
+    const b = elRect.bottom - containerRect.top
+    if (r - l === 0 && b - t === 0) continue
+    if (l < rect.right && r > rect.left && t < rect.bottom && b > rect.top) {
+      result.push(el)
+    }
+  }
+  return result
+}
+
+function getFilteredElementsInBrush(container, cx, cy, radius, tag) {
+  const svg = container.querySelector('svg')
+  if (!svg) return []
+  const all = svg.querySelectorAll('*')
+  const result = []
+  for (const el of all) {
+    if (el.tagName !== el.tagName.toLowerCase()) continue
+    const elTag = el.tagName.toLowerCase()
+    if (tag !== 'any' && elTag !== tag) continue
+    if (tag === 'any' && el.children.length > 0) continue
+    const rect = el.getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) continue
+    if (circleIntersectsRect(cx, cy, radius, rect)) {
+      result.push(el)
+    }
+  }
+  return result
+}
+
 function Canvas({
   htmlCode,
   onCodeChange,
@@ -139,6 +181,8 @@ function Canvas({
   const [transientTool, setTransientTool] = useState(null)
   const savedToolRef = useRef(null)
   const effectiveTool = transientTool || activeTool
+  const effectiveToolRef = useRef(effectiveTool)
+  effectiveToolRef.current = effectiveTool
   const [rotationAngle, setRotationAngle] = useState(0)
   const rotationStartRef = useRef(null)
   const rotationInitialRef = useRef(0)
@@ -176,6 +220,12 @@ function Canvas({
 
   const updateOverlayPositions = useCallback(() => {
     if (!containerRef.current) return
+    const tool = effectiveToolRef.current
+    if (tool !== 'select' && tool !== 'rotate') {
+      rotateCenterRef.current = null
+      setOverlays([])
+      return
+    }
     const contentRect = containerRef.current.getBoundingClientRect()
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
     let found = false
@@ -531,6 +581,9 @@ function Canvas({
     const centerY = ocRect.top + unionRect.top + (unionRect.bottom - unionRect.top) / 2
     rotationStartRef.current = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI)
     rotationInitialRef.current = rotationAngle
+    
+    // Store shift key state for precise rotation
+    const isShiftKey = e.shiftKey
 
     const svg = containerRef.current?.querySelector('svg')
     let svgCenter = null
@@ -551,8 +604,16 @@ function Canvas({
 
     const onMove = (ev) => {
       const currentAngle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * (180 / Math.PI)
-      const delta = currentAngle - rotationStartRef.current
-      const newAngle = ((rotationInitialRef.current + delta) % 360 + 360) % 360
+      let delta = currentAngle - rotationStartRef.current
+      let newAngle = rotationInitialRef.current + delta
+      
+      // Precise rotation with Shift: snap to 15-degree increments
+      if (ev.shiftKey || isShiftKey) {
+        newAngle = Math.round(newAngle / 15) * 15
+      }
+      
+      // Normalize angle to 0-360 range
+      newAngle = ((newAngle % 360) + 360) % 360
       const rounded = Math.round(newAngle)
       setRotationAngle(rounded)
       applyRotationToElements(rounded, svgCenter || rotationSvgCenterRef.current)
@@ -620,6 +681,15 @@ function Canvas({
         rotateSelected: (angle) => { setRotationAngle(angle); applyRotationToElements(angle); syncToEditor() },
         selectByOuterHTML,
         selectAtCursorPos,
+        selectElementRef: (el) => {
+          if (!el || !document.contains(el)) return
+          selectedRefs.current.clear()
+          selectedRefs.current.add(el)
+          onSelectionChange(1)
+          onSelectionUpdate?.(selectedRefs.current)
+          applySelectionStyles()
+          updateOverlayPositions()
+        },
         getContentBBox: () => {
           const svg = containerRef.current?.querySelector('svg')
           if (!svg) return null
@@ -827,7 +897,7 @@ function Canvas({
       styleEl.id = '__marquee_selection_styles'
       document.head.appendChild(styleEl)
     }
-    if (activeTool === 'path-select') {
+    if (activeTool === 'path-select' || activeTool === 'brush-select') {
       styleEl.textContent = `
         [data-marq-selected] {
           stroke: ${SELECTION_COLOR} !important;
@@ -1002,9 +1072,8 @@ function Canvas({
     if (target === containerRef.current) {
       if (effectiveTool === 'zoom') return
       if (effectiveTool === 'brush-select') {
-        if (!e.shiftKey) clearSelection()
         startDrag(e)
-        const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
+        const elements = getFilteredElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current, pathTagFilterRef.current)
         if (e.shiftKey) {
           elements.forEach(el => selectedRefs.current.delete(el))
         } else {
@@ -1028,12 +1097,16 @@ function Canvas({
       return
     }
     if (effectiveTool === 'select') {
-      if (isLeafElement(target) || target.tagName.toLowerCase() === 'g' || isGroupElement(target)) {
-        startDrag(e)
+      const tag = pathTagFilterRef.current
+      const matched = tag === 'any'
+        ? (isLeafElement(target) || target.tagName.toLowerCase() === 'g' || isGroupElement(target) ? target : null)
+        : findNearestByTag(target, tag)
+      if (matched) {
+        selectElement(matched, e.shiftKey)
       } else {
         clearSelection()
-        startDrag(e)
       }
+      startDrag(e)
     } else if (effectiveTool === 'move') {
       if (selectedRefs.current.size > 0 && selectedRefs.current.has(target)) {
         startDrag(e)
@@ -1050,9 +1123,10 @@ function Canvas({
         clearSelection()
       }
     } else if (effectiveTool === 'path-select') {
-      const matched = pathTagFilter === 'any'
-        ? (isLeafElement(target) ? target : null)
-        : findNearestByTag(target, pathTagFilter)
+      const tag = pathTagFilterRef.current
+      const matched = tag === 'any'
+        ? (isLeafElement(target) || target.tagName.toLowerCase() === 'g' || isGroupElement(target) ? target : null)
+        : findNearestByTag(target, tag)
       if (matched) {
         selectElement(matched, e.shiftKey)
       } else {
@@ -1060,9 +1134,9 @@ function Canvas({
       }
       startDrag(e)
     } else if (effectiveTool === 'brush-select') {
-      if (!e.shiftKey) clearSelection()
+      const tag = pathTagFilterRef.current
       startDrag(e)
-      const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
+      const elements = getFilteredElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current, tag)
       if (e.shiftKey) {
         elements.forEach(el => selectedRefs.current.delete(el))
       } else {
@@ -1072,6 +1146,14 @@ function Canvas({
       onSelectionUpdate?.(selectedRefs.current)
       applySelectionStyles()
       updateOverlayPositions()
+    } else if (effectiveTool === 'rotate') {
+      const tag = pathTagFilterRef.current
+      const matched = tag === 'any'
+        ? (isLeafElement(target) || target.tagName.toLowerCase() === 'g' || isGroupElement(target) ? target : null)
+        : findNearestByTag(target, tag)
+      if (matched) {
+        selectElement(matched, e.shiftKey)
+      }
     } else if (effectiveTool === 'delete-tool') {
       if (target !== containerRef.current) {
         target.remove()
@@ -1153,7 +1235,7 @@ function Canvas({
         selectionRAFRef.current = null
         if (!containerRef.current || !dragStart.current) return
         if (activeTool === 'brush-select') {
-          const elements = getElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current)
+          const elements = getFilteredElementsInBrush(containerRef.current, e.clientX, e.clientY, brushSizeRef.current, pathTagFilterRef.current)
           if (e.shiftKey) {
             elements.forEach(el => selectedRefs.current.delete(el))
           } else {
@@ -1176,10 +1258,7 @@ function Canvas({
             right: cLeft + cW,
             bottom: cTop + cH,
           }
-          const leaves = getLeafElementsInRect(containerRef.current, marqueeRect)
-          const filtered = activeTool === 'path-select' && pathTagFilterRef.current !== 'any'
-            ? leaves.filter(el => el.tagName.toLowerCase() === pathTagFilterRef.current)
-            : leaves
+          const filtered = getFilteredElementsInRect(containerRef.current, marqueeRect, pathTagFilterRef.current)
           if (e.shiftKey) {
             filtered.forEach(el => selectedRefs.current.delete(el))
           } else {
@@ -1272,9 +1351,10 @@ function Canvas({
       rectZoomDragRef.current = false
     }
 
-    // If no meaningful drag happened, select the clicked element (only SVG content, not the canvas container)
+    // If no meaningful drag happened, select the clicked element (only for move tool)
+    // select tool now handles selection in mousedown (like path-select)
     if (!draggedRef.current && clickedElement) {
-      if (effectiveTool === 'select' || effectiveTool === 'move') {
+      if (effectiveTool === 'move') {
         const isSvgContent =
           clickedElement.tagName === clickedElement.tagName?.toLowerCase() &&
           (isLeafElement(clickedElement) ||
@@ -1368,11 +1448,15 @@ function Canvas({
       return
     }
     if (!selectedRefs.current.has(target) && isLeafElement(target)) {
-      selectedRefs.current.clear()
-      selectedRefs.current.add(target)
-      onSelectionChange(1)
-      applySelectionStyles()
-      updateOverlayPositions()
+      const tag = pathTagFilterRef.current
+      const selectTarget = tag !== 'any' ? findNearestByTag(target, tag) : target
+      if (selectTarget) {
+        selectedRefs.current.clear()
+        selectedRefs.current.add(selectTarget)
+        onSelectionChange(1)
+        applySelectionStyles()
+        updateOverlayPositions()
+      }
     }
     onSelectionUpdate?.(selectedRefs.current)
     const desc = getElementPathDescription(target)
@@ -1436,7 +1520,7 @@ function Canvas({
       </div>
       <div
         ref={wrapperRef}
-        className={`canvas-wrapper${effectiveTool === 'zoom' ? ' cursor-zoom' : ''}${dragOver ? ' canvas-drop-over' : ''}${spaceDown ? ' pan-mode' : ''}${isPanning ? ' pan-active' : ''}`}
+        className={`canvas-wrapper${effectiveTool === 'zoom' ? ' cursor-zoom' : ''}${effectiveTool === 'rotate' && selectedRefs.current.size > 0 ? ' rotate-mode' : ''}${dragOver ? ' canvas-drop-over' : ''}${spaceDown ? ' pan-mode' : ''}${isPanning ? ' pan-active' : ''}`}
         onContextMenu={handleContextMenu}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -1487,7 +1571,33 @@ function Canvas({
                   right: Math.max(acc.right, o.left + o.width),
                   bottom: Math.max(acc.bottom, o.top + o.height),
                 }), { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity })
-                return (
+                const isRotateTool = effectiveTool === 'rotate'
+                return isRotateTool ? (
+                  <>
+                    {[[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]].map(([cx, cy], i) => {
+                      const corners = ['tl', 'tr', 'br', 'bl']
+                      const corner = corners[i]
+                      const rotationAngles = { tl: 45, tr: -45, br: 225, bl: 135 }
+                      const angle = rotationAngles[corner]
+                      return (
+                        <div
+                          key={i}
+                          className="rotation-corner"
+                          onMouseDown={startRotation}
+                          style={{
+                            position: 'absolute',
+                            left: cx - 8,
+                            top: cy - 8,
+                            width: 16,
+                            height: 16,
+                            '--rotate-angle': angle + 'deg',
+                          }}
+                          title={`Drag to rotate (Shift for 15° increments)`}
+                        />
+                      )
+                    })}
+                  </>
+                ) : (
                   <>
                     <div
                       className="rotation-line"
@@ -1501,6 +1611,7 @@ function Canvas({
                     />
                     <div
                       className="rotation-handle"
+                      title="Drag to rotate (Shift for 15° increments)"
                       onMouseDown={startRotation}
                       style={{
                         position: 'absolute',

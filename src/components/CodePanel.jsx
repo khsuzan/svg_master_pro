@@ -95,32 +95,12 @@ function findParentTagRange(code, tagRange) {
   return findTagRange(code, tagRange.from - 1)
 }
 
-function CodeViewMenu({ x, y, currentView, onSwitchView, onCopy, onCut, onPaste, onClose, tagAtCursor, onExpandTag, onExpandParent, onSelectContents }) {
+function CodeViewMenu({ x, y, onCopy, onCut, onPaste, onClose, tagAtCursor, onExpandTag, onExpandParent, onSelectContents }) {
   const [showSelect, setShowSelect] = useState(false)
   return (
     <>
       <div className="context-menu-backdrop" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} />
       <div className="context-menu" style={{ left: x, top: y, minWidth: 140 }}>
-        <div className="context-menu-item-label">View</div>
-        <button
-          className={`context-menu-item ${currentView === 'raw' ? 'active' : ''}`}
-          onClick={() => { onSwitchView('raw'); onClose() }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
-          </svg>
-          <span>Raw Code</span>
-        </button>
-        <button
-          className={`context-menu-item ${currentView === 'tree' ? 'active' : ''}`}
-          onClick={() => { onSwitchView('tree'); onClose() }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 3h14" /><path d="M9 3v18" /><path d="M14 3v7" /><path d="M14 10h-4" />
-          </svg>
-          <span>Tree View</span>
-        </button>
-        <div className="context-menu-separator" />
         <div className="context-menu-item-label">Selection</div>
         <div
           className={`context-menu-item context-menu-submenu ${showSelect ? 'open' : ''}`}
@@ -134,7 +114,7 @@ function CodeViewMenu({ x, y, currentView, onSwitchView, onCopy, onCut, onPaste,
               <button className="context-menu-item" onClick={() => { onExpandTag(); onClose() }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 <span>Expand Tag</span>
-                {tagAtCursor && <span className="tree-tag" style={{marginLeft:4}}>&lt;{tagAtCursor}&gt;</span>}
+                {tagAtCursor && <span style={{marginLeft:4, fontFamily: 'var(--font-mono)'}}>&lt;{tagAtCursor}&gt;</span>}
               </button>
               <button className="context-menu-item" onClick={() => { onExpandParent(); onClose() }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
@@ -175,122 +155,12 @@ function CodeViewMenu({ x, y, currentView, onSwitchView, onCopy, onCut, onPaste,
   )
 }
 
-function parseHtmlToTree(html) {
-  const container = document.createElement('div')
-  container.innerHTML = html.trim()
-  function walk(node, depth = 0) {
-    const nodes = []
-    for (const child of node.children) {
-      const tag = child.tagName.toLowerCase()
-      const attrs = {}
-      for (const attr of child.attributes) {
-        if (!attr.name.startsWith('data-marq-')) {
-          attrs[attr.name] = attr.value
-        }
-      }
-      const children = walk(child, depth + 1)
-      nodes.push({ tag, attrs, children, el: child })
-    }
-    return nodes
-  }
-  return walk(container)
-}
 
-const SVG_KEY_ATTRS = {
-  rect: ['x', 'y', 'width', 'height', 'rx', 'fill', 'stroke'],
-  circle: ['cx', 'cy', 'r', 'fill', 'stroke'],
-  ellipse: ['cx', 'cy', 'rx', 'ry', 'fill', 'stroke'],
-  line: ['x1', 'y1', 'x2', 'y2', 'stroke'],
-  path: ['d', 'fill', 'stroke'],
-  text: ['x', 'y', 'font-size', 'fill'],
-  g: ['id', 'class', 'transform', 'fill'],
-  svg: ['viewBox', 'width', 'height'],
-  polygon: ['points', 'fill', 'stroke'],
-  polyline: ['points', 'fill', 'stroke'],
-  image: ['href', 'x', 'y', 'width', 'height'],
-  use: ['href', 'x', 'y'],
-  linearGradient: ['id', 'x1', 'y1', 'x2', 'y2'],
-  radialGradient: ['id', 'cx', 'cy', 'r'],
-  clipPath: ['id'],
-  mask: ['id'],
-  filter: ['id'],
-  defs: [],
-}
 
-function getKeyAttrs(tag, attrs) {
-  const keys = SVG_KEY_ATTRS[tag] || Object.keys(attrs).slice(0, 3)
-  return keys.filter(k => k in attrs).map(k => [k, attrs[k]])
-}
-
-function filterTree(nodes, searchText) {
-  if (!searchText) return nodes
-  const result = []
-  for (const node of nodes) {
-    const tagStr = node.tag + Object.entries(node.attrs).map(([k, v]) => ` ${k}="${v}"`).join('')
-    const selfMatch = tagStr.toLowerCase().includes(searchText.toLowerCase())
-    const filteredChildren = node.children.length > 0 ? filterTree(node.children, searchText) : []
-    if (selfMatch || filteredChildren.length > 0) {
-      result.push({ ...node, children: filteredChildren })
-    }
-  }
-  return result
-}
-
-function TreeNode({ node, depth, searchText, onSelect, selectedPath }) {
-  const [expanded, setExpanded] = useState(depth < 2)
-  const hasChildren = node.children.length > 0
-  const tagStr = node.tag + Object.entries(node.attrs).map(([k, v]) => ` ${k}="${v}"`).join('')
-  const isSelected = selectedPath && node.el === selectedPath
-  const keyAttrs = getKeyAttrs(node.tag, node.attrs)
-
-  return (
-    <div>
-      <div
-        className={`tree-node ${isSelected ? 'tree-selected' : ''}`}
-        style={{ paddingLeft: depth * 14 + 8 }}
-        onClick={() => onSelect(node.el, tagStr)}
-      >
-        {hasChildren ? (
-          <span className="tree-toggle" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}>
-            {expanded ? '▾' : '▸'}
-          </span>
-        ) : (
-          <span className="tree-toggle tree-toggle-placeholder" />
-        )}
-        <span className={`tree-tag tree-tag-${node.tag}`}>{node.tag}</span>
-        {keyAttrs.length > 0 && (
-          <span className="tree-attrs-preview">
-            {keyAttrs.map(([k, v]) => (
-              <span key={k} className="tree-attr">
-                {' '}<span className="tree-attr-name">{k}</span>=<span className="tree-attr-val">"{v}"</span>
-              </span>
-            ))}
-          </span>
-        )}
-        {hasChildren && (
-          <span className="tree-child-count">{node.children.length}</span>
-        )}
-      </div>
-      {hasChildren && expanded && (
-        <div>
-          {node.children.map((child, i) => (
-            <TreeNode key={i} node={child} depth={depth + 1} searchText={searchText} onSelect={onSelect} selectedPath={selectedPath} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, selectedElement, onCodeSelectElement, hint }, ref) {
+const CodePanel = forwardRef(function CodePanel({ value, onChange, onCodeSelectElement, hint }, ref) {
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
-  const [view, setView] = useState('raw')
-  const [tree, setTree] = useState(() => parseHtmlToTree(value))
-  const [selectedPath, setSelectedPath] = useState(null)
   const [codeMenu, setCodeMenu] = useState(null)
-  const [treeLoading, setTreeLoading] = useState(false)
-  const [treeSearch, setTreeSearch] = useState('')
 
   const onChangeRef = useRef(onChange)
   const suppressListenerRef = useRef(false)
@@ -354,29 +224,6 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
       suppressListenerRef.current = false
     }
   })
-
-  useEffect(() => {
-    if (view === 'tree') {
-      setTreeLoading(true)
-      const timer = setTimeout(() => {
-        const parsed = parseHtmlToTree(value)
-        const filtered = filterTree(parsed, treeSearch)
-        setTree(filtered)
-        setTreeLoading(false)
-      }, 0)
-      return () => clearTimeout(timer)
-    }
-  }, [view, value, treeSearch])
-
-  useEffect(() => {
-    setSelectedPath(selectedElement)
-  }, [selectedElement])
-
-  useEffect(() => {
-    if (view === 'raw' && editorRef.current) {
-      setTimeout(() => editorRef.current?.layout(), 0)
-    }
-  }, [view])
 
   useImperativeHandle(ref, () => ({
     selectCodeInEditor(htmlString) {
@@ -504,10 +351,6 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
     })
   }, [expandSelection])
 
-  const handleSwitchView = useCallback((v) => {
-    setView(v)
-  }, [])
-
   const handleCodeCopy = useCallback(() => {
     const editor = editorRef.current
     if (!editor) return
@@ -541,38 +384,12 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
     } catch {}
   }, [])
 
-  const handleTreeSelect = useCallback((el, tagStr) => {
-    setSelectedPath(el)
-    const htmlStr = el.outerHTML || `<${tagStr}></${el.tagName.toLowerCase()}>`
-    const editor = editorRef.current
-    if (!editor) return
-    const model = editor.getModel()
-    if (!model) return
-    const code = model.getValue()
-    const idx = code.indexOf(htmlStr.trim())
-    if (idx !== -1) {
-      const startPos = model.getPositionAt(idx)
-      const endPos = model.getPositionAt(idx + htmlStr.trim().length)
-      editor.focus()
-      editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
-      editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
-    }
-    onCodeSelectElement?.(htmlStr)
-  }, [onCodeSelectElement])
-
-  const viewHint = view === 'raw'
-    ? 'Ctrl+F to search · Tab to indent'
-    : 'Click nodes to navigate · ▸ to expand'
-
   return (
     <div className="code-panel">
       <div className="code-header">
-        <div className="code-header-left">
-          <span className="code-header-title">Code</span>
-        </div>
-        <span className="code-header-hint">{hint || viewHint}</span>
+        <span className="code-header-hint">{hint || 'Ctrl+F to search · Tab to indent'}</span>
       </div>
-      <div className="code-editor-container" style={{ display: view === 'raw' ? 'flex' : 'none' }} onContextMenu={handleCodeContextMenu}>
+      <div className="code-editor-container" onContextMenu={handleCodeContextMenu}>
         <div className="code-mirror-container">
           <Editor
             height="100%"
@@ -603,41 +420,10 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, searchText, s
           />
         </div>
       </div>
-      {view === 'tree' && (
-        <div className="code-tree-container" onContextMenu={handleCodeContextMenu}>
-          <div className="tree-search-bar">
-            <svg className="tree-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              className="tree-search-input"
-              type="text"
-              placeholder="Filter elements..."
-              value={treeSearch}
-              onChange={(e) => setTreeSearch(e.target.value)}
-              spellCheck={false}
-            />
-            {!treeLoading && <span className="tree-count">{tree.length} element{tree.length !== 1 ? 's' : ''}</span>}
-          </div>
-          {treeLoading ? (
-            <div className="tree-loading">Parsing tree...</div>
-          ) : tree.length === 0 ? (
-            <div className="tree-empty">{treeSearch ? 'No matching elements' : 'No elements to display'}</div>
-          ) : (
-            <div className="tree-scroll">
-              {tree.map((node, i) => (
-                <TreeNode key={i} node={node} depth={0} searchText={treeSearch} onSelect={handleTreeSelect} selectedPath={selectedPath} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
       {codeMenu && (
         <CodeViewMenu
           x={codeMenu.x}
           y={codeMenu.y}
-          currentView={view}
-          onSwitchView={handleSwitchView}
           onCopy={handleCodeCopy}
           onCut={handleCodeCut}
           onPaste={handleCodePaste}
