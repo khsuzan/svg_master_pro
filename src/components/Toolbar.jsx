@@ -206,7 +206,7 @@ export default function Toolbar({
                 {rotateMenuOpen && (
                   <>
                     <div className="toolbar-dropdown-backdrop" onClick={() => setRotateMenuOpen(false)} />
-                    <div className="toolbar-dropdown">
+                    <div className="toolbar-dropdown" style={{ minWidth: 200 }}>
                       <button className="toolbar-dropdown-item" onClick={() => { onRotateSelected?.(90); setRotateMenuOpen(false) }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></svg>
                         Rotate 90° CW
@@ -219,6 +219,27 @@ export default function Toolbar({
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" /></svg>
                         Rotate 180°
                       </button>
+                      <div className="toolbar-dropdown-sep" />
+                      <div className="toolbar-dropdown-rotate-row">
+                        <input
+                          type="number"
+                          className="toolbar-dropdown-rotate-input"
+                          placeholder="0"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const v = parseFloat(e.target.value)
+                              if (!isNaN(v)) { onRotateSelected?.(v); setRotateMenuOpen(false) }
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <span className="toolbar-dropdown-rotate-deg">°</span>
+                        <button className="toolbar-dropdown-rotate-apply" onClick={(e) => {
+                          const input = e.currentTarget.parentElement.querySelector('input')
+                          const v = parseFloat(input?.value)
+                          if (!isNaN(v)) { onRotateSelected?.(v); setRotateMenuOpen(false) }
+                        }}>Apply</button>
+                      </div>
                     </div>
                   </>
                 )}

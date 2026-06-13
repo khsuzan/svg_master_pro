@@ -123,6 +123,38 @@ function autoExpandNodes(nodes, set) {
   }
 }
 
+function getRealEl(path) {
+  const canvasContent = document.querySelector('.canvas-content')
+  if (!canvasContent) return null
+  const svg = canvasContent.querySelector('svg')
+  if (!svg) return null
+  let cur = svg
+  for (const idx of path) {
+    let c = 0
+    let found = false
+    for (const child of cur.children) {
+      const tag = child.tagName.toLowerCase()
+      if (tag === 'defs' || tag === 'style') continue
+      if (c === idx) { cur = child; found = true; break }
+      c++
+    }
+    if (!found) return null
+  }
+  return cur
+}
+
+function isVisible(path) {
+  const el = getRealEl(path)
+  if (!el) return true
+  return el.style.visibility !== 'hidden'
+}
+
+function isLocked(path) {
+  const el = getRealEl(path)
+  if (!el) return false
+  return el.style.pointerEvents === 'none' && el.style.visibility !== 'hidden'
+}
+
 const LayerItem = memo(function LayerItem({
   node,
   depth,
@@ -132,9 +164,13 @@ const LayerItem = memo(function LayerItem({
   onOpenContextMenu,
   expanded,
   onToggle,
+  onToggleVisibility,
+  onToggleLock,
 }) {
   const isSelected = selectedPath && node.el === selectedPath
   const hasChildren = node.children.length > 0
+  const visible = isVisible(node.path)
+  const locked = isLocked(node.path)
   const itemRef = useRef(null)
 
   useLayoutEffect(() => {
@@ -145,13 +181,13 @@ const LayerItem = memo(function LayerItem({
 
   const handleClick = useCallback((e) => {
     e.stopPropagation()
-    onSelect(node.el)
-  }, [onSelect, node.el])
+    onSelect(node.path)
+  }, [onSelect, node.path])
 
   const handleDoubleClick = useCallback((e) => {
     e.stopPropagation()
-    onOpenProperties(node.el)
-  }, [onOpenProperties, node.el])
+    onOpenProperties(node.path)
+  }, [onOpenProperties, node.path])
 
   const handleToggle = useCallback((e) => {
     e.stopPropagation()
@@ -161,16 +197,26 @@ const LayerItem = memo(function LayerItem({
   const handleContextMenu = useCallback((e) => {
     e.preventDefault()
     e.stopPropagation()
-    onSelect(node.el)
+    onSelect(node.path)
     const tag = node.tag
     onOpenContextMenu(e.clientX, e.clientY, node.el, `<${tag}>`, true, false)
   }, [onSelect, onOpenContextMenu, node.el, node.tag])
+
+  const handleVisibilityClick = useCallback((e) => {
+    e.stopPropagation()
+    onToggleVisibility(node.path)
+  }, [onToggleVisibility, node.path])
+
+  const handleLockClick = useCallback((e) => {
+    e.stopPropagation()
+    onToggleLock(node.path)
+  }, [onToggleLock, node.path])
 
   return (
     <div>
       <div
         ref={itemRef}
-        className={`layer-item${isSelected ? ' layer-selected' : ''}`}
+        className={`layer-item${isSelected ? ' layer-selected' : ''}${!visible || locked ? ' layer-dimmed' : ''}`}
         style={{ paddingLeft: depth * 14 + 8 }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
@@ -185,8 +231,38 @@ const LayerItem = memo(function LayerItem({
         )}
         <span className={`layer-icon layer-icon-${node.tag}`}>{node.icon}</span>
         <span className="layer-name">{node.name}</span>
+        <span
+          className={`layer-vis-btn ${visible ? '' : 'layer-vis-hidden'}`}
+          onClick={handleVisibilityClick}
+          title={visible ? 'Hide' : 'Show'}
+        >
+          {visible ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          )}
+        </span>
+        <span
+          className={`layer-lock-btn ${locked ? 'layer-lock-locked' : ''}`}
+          onClick={handleLockClick}
+          title={locked ? 'Unlock' : 'Lock'}
+        >
+          {locked ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>
+            </svg>
+          )}
+        </span>
       </div>
-      {hasChildren && expanded && (
+      {hasChildren && expanded.has(node.el) && (
         <div>
           {node.children.map((child, i) => (
             <LayerItem
@@ -199,6 +275,8 @@ const LayerItem = memo(function LayerItem({
               onOpenContextMenu={onOpenContextMenu}
               expanded={expanded}
               onToggle={onToggle}
+              onToggleVisibility={onToggleVisibility}
+              onToggleLock={onToggleLock}
             />
           ))}
         </div>
@@ -207,7 +285,7 @@ const LayerItem = memo(function LayerItem({
   )
 })
 
-function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMenu, onOpenProperties }) {
+function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMenu, onOpenProperties, onToggleVisibility, onToggleLock }) {
   const [expanded, setExpanded] = useState(() => new Set())
   const [layers, setLayers] = useState([])
   const [selectedPath, setSelectedPath] = useState(null)
@@ -248,8 +326,8 @@ function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMen
     }
   }, [selectedElement, layers])
 
-  const handleSelect = useCallback((el) => {
-    onLayerSelect(el)
+  const handleSelect = useCallback((path) => {
+    onLayerSelect(path)
   }, [onLayerSelect])
 
   const handleToggle = useCallback((el) => {
@@ -295,7 +373,7 @@ function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMen
         />
       </div>
       <div className="layer-scroll" ref={scrollRef}>
-        {displayLayers.length === 0 ? (
+          {displayLayers.length === 0 ? (
           <div className="layer-empty">
             {searchText ? 'No matching layers' : 'No layers'}
           </div>
@@ -311,6 +389,8 @@ function LayerPanel({ htmlCode, selectedElement, onLayerSelect, onOpenContextMen
               onOpenContextMenu={onOpenContextMenu}
               expanded={expanded}
               onToggle={handleToggle}
+              onToggleVisibility={onToggleVisibility}
+              onToggleLock={onToggleLock}
             />
           ))
         )}

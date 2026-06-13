@@ -13,6 +13,162 @@ const CANVAS_SIZE = 4000
 
 const SELECTION_COLOR = '#0099ff'
 
+function transformPathD(d, dx, dy, angleDeg, cx, cy) {
+  const angleRad = angleDeg * Math.PI / 180
+  const cosA = Math.cos(angleRad)
+  const sinA = Math.sin(angleRad)
+  const hasRotate = angleDeg !== 0
+
+  const cmd = /([A-Za-z])([^A-Za-z]*?)(?=[A-Za-z]|$)/g
+  let curX = 0, curY = 0, startX = 0, startY = 0
+
+  const fmt = (n) => Number.isInteger(n) ? n : parseFloat(n.toFixed(4))
+  const apply = (x, y) => {
+    const tx = x + dx, ty = y + dy
+    if (!hasRotate) return { x: tx, y: ty }
+    return {
+      x: cx + (tx - cx) * cosA - (ty - cy) * sinA,
+      y: cy + (tx - cx) * sinA + (ty - cy) * cosA
+    }
+  }
+
+  return d.replace(cmd, (_, letter, params) => {
+    if (letter === 'Z' || letter === 'z') { curX = startX; curY = startY; return _ }
+    const nums = (params.match(/[+-]?\d*\.?\d+(?:[eE][+-]?\d+)?/g) || []).map(Number)
+    if (nums.length === 0) return _
+    const isAbs = letter === letter.toUpperCase()
+    const up = letter.toUpperCase()
+
+    // M must be handled separately — subsequent pairs are implicit L
+    if (up === 'M') {
+      const parts = []
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        const x0 = isAbs ? nums[i] : curX + nums[i]
+        const y0 = isAbs ? nums[i + 1] : curY + nums[i + 1]
+        const p = apply(x0, y0)
+        const l = i === 0 ? letter : (isAbs ? 'L' : 'l')
+        parts.push(l + ' ' + fmt(p.x) + ' ' + fmt(p.y))
+        curX = p.x; curY = p.y
+      }
+      startX = curX; startY = curY
+      return parts.join('')
+    }
+
+    let outLetter = letter
+    const outNums = []
+
+    if (up === 'H') {
+      const x = isAbs ? nums[0] : curX + nums[0]
+      const p = apply(x, curY)
+      if (hasRotate) { outLetter = isAbs ? 'L' : 'l'; outNums.push(p.x, p.y) }
+      else { outNums.push(p.x) }
+      curX = p.x; curY = p.y
+    } else if (up === 'V') {
+      const y = isAbs ? nums[0] : curY + nums[0]
+      const p = apply(curX, y)
+      if (hasRotate) { outLetter = isAbs ? 'L' : 'l'; outNums.push(p.x, p.y) }
+      else { outNums.push(p.y) }
+      curX = p.x; curY = p.y
+    } else if (up === 'A') {
+      const copy = nums.slice()
+      for (let i = 0; i + 6 < copy.length; i += 7) {
+        const x = isAbs ? copy[i + 5] : curX + copy[i + 5]
+        const y = isAbs ? copy[i + 6] : curY + copy[i + 6]
+        const p = apply(x, y)
+        copy[i + 5] = p.x; copy[i + 6] = p.y
+        curX = p.x; curY = p.y
+      }
+      outNums.push(...copy)
+    } else {
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        const x0 = isAbs ? nums[i] : curX + nums[i]
+        const y0 = isAbs ? nums[i + 1] : curY + nums[i + 1]
+        const p = apply(x0, y0)
+        outNums.push(p.x, p.y)
+        curX = p.x; curY = p.y
+      }
+    }
+
+    return outLetter + ' ' + outNums.map(fmt).join(' ')
+  })
+}
+
+function bakeTransforms(root) {
+  const elements = root.querySelectorAll('*')
+  for (const el of elements) {
+    if (el.tagName.toLowerCase() === 'svg') continue
+    const transform = el.getAttribute('transform')
+    if (!transform) continue
+    const translateRegex = /translate\s*\(\s*([-\d.e+]+)\s*[, ]\s*([-\d.e+]+)\s*\)/g
+    let totalDx = 0, totalDy = 0
+    let m
+    while ((m = translateRegex.exec(transform)) !== null) {
+      totalDx += parseFloat(m[1])
+      totalDy += parseFloat(m[2])
+    }
+    let baked = false
+
+    const maybeBakeAttr = (attr, dx, dy) => {
+      const val = el.getAttribute(attr)
+      if (val === null) return
+      baked = true
+      el.setAttribute(attr, (parseFloat(val) + (attr.endsWith('x') || attr === 'x1' || attr === 'x2' ? dx : dy)).toFixed(2))
+    }
+
+    maybeBakeAttr('x', totalDx, totalDy)
+    maybeBakeAttr('y', totalDx, totalDy)
+    maybeBakeAttr('cx', totalDx, totalDy)
+    maybeBakeAttr('cy', totalDx, totalDy)
+    maybeBakeAttr('x1', totalDx, totalDy)
+    maybeBakeAttr('y1', totalDx, totalDy)
+    maybeBakeAttr('x2', totalDx, totalDy)
+    maybeBakeAttr('y2', totalDx, totalDy)
+
+    let remaining = transform.replace(/translate\s*\([^)]*\)\s*/g, '').trim()
+    let rotAngle = 0, rotCx = 0, rotCy = 0
+
+    // Try to bake rotate(...) for path/polygon elements
+    const rotMatch = remaining.match(/rotate\s*\(\s*([-\d.e+]+)\s*[\s,]\s*([-\d.e+]+)\s*[\s,]\s*([-\d.e+]+)\s*\)/)
+    if (rotMatch && el.tagName.toLowerCase() === 'path') {
+      rotAngle = parseFloat(rotMatch[1])
+      rotCx = parseFloat(rotMatch[2])
+      rotCy = parseFloat(rotMatch[3])
+      remaining = remaining.replace(/rotate\s*\([^)]*\)\s*/, '').trim()
+    }
+
+    const d = el.getAttribute('d')
+    if (d) {
+      el.setAttribute('d', transformPathD(d, totalDx, totalDy, rotAngle, rotCx, rotCy))
+      baked = true
+    }
+    const points = el.getAttribute('points')
+    if (points && (totalDx !== 0 || totalDy !== 0)) {
+      const pts = points.trim().split(/[\s,]+/).filter(Boolean).map(Number)
+      if (pts.length > 0) {
+        const offsetted = pts.map((v, i) => {
+          const off = i % 2 === 0 ? totalDx : totalDy
+          const n = v + off
+          return Number.isInteger(n) ? n : parseFloat(n.toFixed(4))
+        })
+        const rebuilt = []
+        for (let i = 0; i < offsetted.length; i += 2) {
+          rebuilt.push(offsetted[i] + ',' + (offsetted[i+1] !== undefined ? offsetted[i+1] : ''))
+        }
+        el.setAttribute('points', rebuilt.join(' '))
+      }
+      baked = true
+    }
+
+    if (!baked) continue
+
+    if (remaining) {
+      el.setAttribute('transform', remaining)
+    } else {
+      el.removeAttribute('transform')
+    }
+  }
+}
+
 function getTagInfoAtCursor(code, pos) {
   let start = pos
   while (start > 0 && code[start] !== '<') start--
@@ -35,6 +191,7 @@ function findElementAtCursor(container, tagName, code, cursorPos) {
   const all = container.querySelectorAll(tagName)
   let best = null
   let bestSize = Infinity
+
   for (const el of all) {
     if (el.children.length > 0) continue
     const html = el.outerHTML
@@ -47,6 +204,28 @@ function findElementAtCursor(container, tagName, code, cursorPos) {
       if (size < bestSize) {
         best = el
         bestSize = size
+      }
+    }
+  }
+
+  if (!best) {
+    for (const el of all) {
+      if (el.children.length === 0) continue
+      const outer = el.outerHTML
+      const openTagEnd = outer.indexOf('>')
+      if (openTagEnd === -1) continue
+      const openingTag = outer.slice(0, openTagEnd + 1)
+      const openIdx = code.indexOf(openingTag)
+      if (openIdx === -1 || cursorPos < openIdx) continue
+      const closeTag = `</${tagName}>`
+      const closeIdx = code.indexOf(closeTag, openIdx + openingTag.length)
+      const endIdx = closeIdx !== -1 ? closeIdx + closeTag.length : openIdx + openingTag.length
+      if (cursorPos <= endIdx) {
+        const size = endIdx - openIdx
+        if (size < bestSize) {
+          best = el
+          bestSize = size
+        }
       }
     }
   }
@@ -142,6 +321,7 @@ function Canvas({
   onTransientChange,
   brushSize = 30,
   onBrushSizeChange,
+  artboardName = 'Frame 1',
 }) {
   const wrapperRef = useRef(null)
   const containerRef = useRef(null)
@@ -184,6 +364,7 @@ function Canvas({
   const effectiveToolRef = useRef(effectiveTool)
   effectiveToolRef.current = effectiveTool
   const [rotationAngle, setRotationAngle] = useState(0)
+  const [isRotating, setIsRotating] = useState(false)
   const rotationStartRef = useRef(null)
   const rotationInitialRef = useRef(0)
   const [isPanning, setIsPanning] = useState(false)
@@ -200,6 +381,7 @@ function Canvas({
   const dragOrigCtmRef = useRef(null)
   const rotateCenterRef = useRef(null)
   const rotationSvgCenterRef = useRef(null)
+  const artboardDragRef = useRef(null)
   const moveThrottleRef = useRef(0)
   const selectionThrottleRef = useRef(0)
   const selectionRAFRef = useRef(null)
@@ -260,6 +442,7 @@ function Canvas({
     if (!svg) return
     const clone = svg.cloneNode(true)
     clone.querySelector('#__vis_css')?.remove()
+    bakeTransforms(clone)
     const newHtml = stripSelectionMarkers(clone.outerHTML)
     currentHtmlRef.current = newHtml
     onCodeChange(newHtml)
@@ -284,6 +467,18 @@ function Canvas({
         }
         containerRef.current.innerHTML = code
         currentHtmlRef.current = code
+        // Restore zoom-scaled SVG dimensions after DOM replacement
+        const freshSvg = containerRef.current.querySelector('svg')
+        if (freshSvg) {
+          const vb = freshSvg.getAttribute('viewBox')
+          if (vb) {
+            const parts = vb.trim().split(/[\s,]+/).map(Number)
+            if (parts.length === 4) {
+              freshSvg.setAttribute('width', parts[2] * zoom)
+              freshSvg.setAttribute('height', parts[3] * zoom)
+            }
+          }
+        }
         // Re-inject visual CSS after DOM replacement
         if (cssEnabledRef.current) {
           const newSvg = containerRef.current.querySelector('svg')
@@ -570,6 +765,8 @@ function Canvas({
     const a = isNaN(angle) ? 0 : angle
     setRotationAngle(a)
     applyRotationToElements(a)
+    const svg = containerRef.current?.querySelector('svg')
+    if (svg) bakeTransforms(svg)
     syncToEditor()
   }, [applyRotationToElements, syncToEditor])
 
@@ -595,6 +792,7 @@ function Canvas({
     const centerY = ocRect.top + unionRect.top + (unionRect.bottom - unionRect.top) / 2
     rotationStartRef.current = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI)
     rotationInitialRef.current = rotationAngle
+    setIsRotating(true)
     
     // Store shift key state for precise rotation
     const isShiftKey = e.shiftKey
@@ -634,6 +832,7 @@ function Canvas({
     }
 
     const onUp = () => {
+      setIsRotating(false)
       rotationSvgCenterRef.current = null
       rotationStartRef.current = null
       syncToEditor()
@@ -643,7 +842,50 @@ function Canvas({
 
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-  }, [getUnionOverlayRect, rotationAngle, applyRotationToElements, syncToEditor])
+  }, [getUnionOverlayRect, rotationAngle, applyRotationToElements, syncToEditor, setIsRotating])
+
+  const handleArtboardDragStart = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const svg = containerRef.current?.querySelector('svg')
+    if (!svg) return
+    const vb = svg.getAttribute('viewBox')
+    if (!vb) return
+    const parts = vb.trim().split(/[\s,]+/).map(Number)
+    if (parts.length !== 4) return
+
+    artboardDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startVbX: parts[0],
+      startVbY: parts[1],
+      vbW: parts[2],
+      vbH: parts[3],
+      zoom: zoomRef.current,
+    }
+
+    const onMove = (ev) => {
+      const drag = artboardDragRef.current
+      if (!drag) return
+      const dx = ev.clientX - drag.startX
+      const dy = ev.clientY - drag.startY
+      const newVbX = drag.startVbX + dx / drag.zoom
+      const newVbY = drag.startVbY + dy / drag.zoom
+      const svg = containerRef.current?.querySelector('svg')
+      if (!svg) return
+      svg.setAttribute('viewBox', `${newVbX} ${newVbY} ${drag.vbW} ${drag.vbH}`)
+    }
+
+    const onUp = () => {
+      artboardDragRef.current = null
+      syncToEditor()
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [syncToEditor])
 
   const selectByOuterHTML = useCallback((html) => {
     if (!containerRef.current || !html) return
@@ -1317,7 +1559,11 @@ function Canvas({
       dragMoveRef.current = false
       dragOrigTransformsRef.current = null
       dragOrigCtmRef.current = null
-      if (draggedRef.current) syncToEditor()
+      if (draggedRef.current) {
+        const svg = containerRef.current?.querySelector('svg')
+        if (svg) bakeTransforms(svg)
+        syncToEditor()
+      }
     }
 
     if (!draggingRef.current) return
@@ -1493,6 +1739,8 @@ function Canvas({
     h: Math.max(CANVAS_SIZE * zoom, viewportSize.h),
   }
   const contentCenter = contentSize.w / 2
+  const svgLeft = (contentSize.w - svgSize.w * zoom) / 2
+  const svgTop = (contentSize.h - svgSize.h * zoom) / 2
 
   return (
     <div className="canvas-panel">
@@ -1576,6 +1824,15 @@ function Canvas({
                   fill="rgba(255,255,255,0.25)" />
               </svg>
             </div>
+            <div className="artboard-name-label"
+              style={{
+                left: Math.max(4, svgLeft),
+                top: Math.max(2, svgTop - 22),
+              }}
+              onMouseDown={handleArtboardDragStart}
+            >
+              {artboardName}
+            </div>
             <div className="canvas-selection-layer">
               {overlays.map((o, i) => (
                 <div
@@ -1596,56 +1853,78 @@ function Canvas({
                   right: Math.max(acc.right, o.left + o.width),
                   bottom: Math.max(acc.bottom, o.top + o.height),
                 }), { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity })
-                const isRotateTool = effectiveTool === 'rotate'
-                return isRotateTool ? (
+                const midX = (r.left + r.right) / 2
+                const midY = (r.top + r.bottom) / 2
+                const hSize = 10
+                const eSize = 8
+                const rotR = 14
+                const corners = [
+                  { x: r.left, y: r.top, cur: 'nwse-resize' },
+                  { x: r.right, y: r.top, cur: 'nesw-resize' },
+                  { x: r.right, y: r.bottom, cur: 'nwse-resize' },
+                  { x: r.left, y: r.bottom, cur: 'nesw-resize' },
+                ]
+                const edges = [
+                  { x: midX, y: r.top, cur: 'ns-resize' },
+                  { x: r.right, y: midY, cur: 'ew-resize' },
+                  { x: midX, y: r.bottom, cur: 'ns-resize' },
+                  { x: r.left, y: midY, cur: 'ew-resize' },
+                ]
+                return (
                   <>
-                    {[[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]].map(([cx, cy], i) => {
-                      const corners = ['tl', 'tr', 'br', 'bl']
-                      const corner = corners[i]
-                      const rotationAngles = { tl: 45, tr: -45, br: 225, bl: 135 }
-                      const angle = rotationAngles[corner]
-                      return (
-                        <div
-                          key={i}
-                          className="rotation-corner"
-                          onMouseDown={startRotation}
-                          style={{
-                            position: 'absolute',
-                            left: cx - 8,
-                            top: cy - 8,
-                            width: 16,
-                            height: 16,
-                            '--rotate-angle': angle + 'deg',
-                          }}
-                          title={`Drag to rotate (Shift for 10° increments)`}
-                        />
-                      )
-                    })}
-                  </>
-                ) : (
-                  <>
-                    <div
-                      className="rotation-line"
-                      style={{
-                        position: 'absolute',
-                        left: (r.left + r.right) / 2 - 1,
-                        top: r.top - 24,
-                        width: 2,
-                        height: 24,
-                      }}
-                    />
-                    <div
-                      className="rotation-handle"
-                      title="Drag to rotate (Shift for 10° increments)"
-                      onMouseDown={startRotation}
-                      style={{
-                        position: 'absolute',
-                        left: (r.left + r.right) / 2 - 8,
-                        top: r.top - 24 - 8,
-                        width: 16,
-                        height: 16,
-                      }}
-                    />
+                    {corners.map((c, i) => (
+                      <div key={`rz-${i}`}
+                        className="rotation-zone"
+                        onMouseDown={startRotation}
+                        style={{
+                          position: 'absolute',
+                          left: c.x - rotR,
+                          top: c.y - rotR,
+                          width: rotR * 2,
+                          height: rotR * 2,
+                        }}
+                        title="Drag to rotate (Shift for 10° increments)"
+                      />
+                    ))}
+                    {corners.map((c, i) => (
+                      <div key={`c-${i}`}
+                        className="resize-handle"
+                        style={{
+                          position: 'absolute',
+                          left: c.x - hSize / 2,
+                          top: c.y - hSize / 2,
+                          width: hSize,
+                          height: hSize,
+                          cursor: c.cur,
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      />
+                    ))}
+                    {edges.map((c, i) => (
+                      <div key={`e-${i}`}
+                        className="resize-handle-edge"
+                        style={{
+                          position: 'absolute',
+                          left: c.x - eSize / 2,
+                          top: c.y - eSize / 2,
+                          width: eSize,
+                          height: eSize,
+                          cursor: c.cur,
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      />
+                    ))}
+                    {isRotating && (
+                      <div key="pivot" className="rotation-pivot"
+                        style={{
+                          position: 'absolute',
+                          left: midX - 7,
+                          top: midY - 7,
+                          width: 14,
+                          height: 14,
+                        }}
+                      />
+                    )}
                   </>
                 )
               })()}

@@ -165,10 +165,21 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, onCodeSelectE
   const onChangeRef = useRef(onChange)
   const suppressListenerRef = useRef(false)
   const contextClickOffsetRef = useRef(-1)
+  const cursorListenerRef = useRef(null)
+  const suppressCursorSyncRef = useRef(false)
+  const onCodeSelectElementRef = useRef(onCodeSelectElement)
 
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
+
+  useEffect(() => {
+    onCodeSelectElementRef.current = onCodeSelectElement
+  }, [onCodeSelectElement])
+
+  useEffect(() => {
+    return () => cursorListenerRef.current?.dispose()
+  }, [])
 
   const handleEditorDidMount = useCallback((editor, mon) => {
     editorRef.current = editor
@@ -206,6 +217,16 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, onCodeSelectE
       },
     })
     mon.editor.setTheme('svg-master-dark')
+
+    const disposable = editor.onDidChangeCursorPosition((e) => {
+      if (suppressCursorSyncRef.current) return
+      const model = editor.getModel()
+      if (!model) return
+      const code = model.getValue()
+      const offset = model.getOffsetAt(e.position)
+      onCodeSelectElementRef.current?.(code, offset)
+    })
+    cursorListenerRef.current = disposable
   }, [])
 
   const handleEditorChange = useCallback((newValue) => {
@@ -232,14 +253,51 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, onCodeSelectE
       const model = editor.getModel()
       if (!model) return
       const code = model.getValue()
-      const idx = code.indexOf(htmlString.trim())
+      const trimmed = htmlString.trim()
+
+      suppressCursorSyncRef.current = true
+
+      let idx = code.indexOf(trimmed)
+
+      if (idx === -1) {
+        const tagMatch = trimmed.match(/^<(\w+)([^>]*)>/)
+        if (tagMatch) {
+          const tagName = tagMatch[1]
+          const attrs = tagMatch[2]
+          let openIdx = -1
+          const idMatch = attrs.match(/\bid="([^"]*)"/)
+          if (idMatch) {
+            const idSearch = `<${tagName}[^>]*id="${idMatch[1]}"`
+            const idRegex = new RegExp(idSearch)
+            const m = code.match(idRegex)
+            if (m) openIdx = m.index
+          }
+          if (openIdx === -1) {
+            openIdx = code.indexOf(tagMatch[0])
+          }
+          if (openIdx !== -1) {
+            const range = findTagRange(code, openIdx + 1)
+            if (range && range.tagName === tagName) {
+              const startPos = model.getPositionAt(range.from)
+              const endPos = model.getPositionAt(range.to)
+              editor.focus()
+              editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
+              editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
+              suppressCursorSyncRef.current = false
+              return
+            }
+          }
+        }
+      }
+
       if (idx !== -1) {
         const startPos = model.getPositionAt(idx)
-        const endPos = model.getPositionAt(idx + htmlString.trim().length)
+        const endPos = model.getPositionAt(idx + trimmed.length)
         editor.focus()
         editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
         editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
       }
+      suppressCursorSyncRef.current = false
     },
     selectRange(htmlStrings) {
       const editor = editorRef.current
@@ -257,15 +315,20 @@ const CodePanel = forwardRef(function CodePanel({ value, onChange, onCodeSelectE
         if (end > lastEnd) lastEnd = end
       }
       if (firstIdx !== -1 && lastEnd !== -1) {
+        suppressCursorSyncRef.current = true
         const startPos = model.getPositionAt(firstIdx)
         const endPos = model.getPositionAt(lastEnd)
         editor.focus()
         editor.setSelection(new monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
         editor.revealRangeInCenter(new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column))
+        suppressCursorSyncRef.current = false
       }
     },
     focus() {
       editorRef.current?.focus()
+    },
+    getCode() {
+      return editorRef.current?.getValue() || ''
     },
     getCursorInfo() {
       const editor = editorRef.current

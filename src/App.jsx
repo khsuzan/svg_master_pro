@@ -9,7 +9,7 @@ import CssPanel from './components/CssPanel'
 import GroupModal from './components/GroupModal'
 import ArtboardModal from './components/ArtboardModal'
 import ConfirmModal from './components/ConfirmModal'
-import { setElementAttributes } from './utils/domUtils'
+import { setElementAttributes, getElementByPath } from './utils/domUtils'
 import { serializeContainer, prettyPrint, minifyHtml, isPrettified, stripSelectionMarkers } from './utils/serializer'
 import { updateSvgAttrs } from './components/ArtboardModal'
 import './App.css'
@@ -65,7 +65,8 @@ export default function App() {
 
   const [history, setHistory] = useState([DEFAULT_CODE])
   const [historyIndex, setHistoryIndex] = useState(0)
-  const suppressHistoryRef = useRef(false)
+  const skipNextHistoryRef = useRef(false)
+  const mountedRef = useRef(false)
   const saveTimerRef = useRef(null)
   const initialLoadDoneRef = useRef(false)
 
@@ -96,9 +97,18 @@ export default function App() {
     setContextMenu({ visible: false, x: 0, y: 0, hasSelection: false })
   }, [])
 
-  const handleOpenGroupModal = useCallback((target) => {
-    setGroupModal({ visible: true, target })
+  const getRealEl = useCallback((path) => {
+    const container = document.querySelector('.canvas-content')
+    if (!container) return null
+    const svg = container.querySelector('svg')
+    if (!svg) return null
+    return getElementByPath(svg, path)
   }, [])
+
+  const handleOpenGroupModal = useCallback((path) => {
+    const el = getRealEl(path)
+    setGroupModal({ visible: true, target: el })
+  }, [getRealEl])
 
   const handleCloseGroupModal = useCallback(() => {
     setGroupModal({ visible: false, target: null })
@@ -112,15 +122,37 @@ export default function App() {
     }
   }, [])
 
-  const handleLayerSelect = useCallback((el) => {
+  const handleLayerSelect = useCallback((path) => {
+    const el = getRealEl(path)
     if (!el) return
-    if (document.contains(el)) {
-      actionsRef.current?.selectElementRef(el)
-      actionsRef.current?.centerOnElement(el)
-    } else {
-      actionsRef.current?.selectByOuterHTML(el.outerHTML)
+    actionsRef.current?.selectElementRef(el)
+    actionsRef.current?.centerOnElement(el)
+  }, [getRealEl])
+
+  const handleToggleVisibility = useCallback((path) => {
+    const el = getRealEl(path)
+    if (!el) return
+    const isHidden = el.style.visibility === 'hidden'
+    el.style.visibility = isHidden ? '' : 'hidden'
+    el.style.pointerEvents = isHidden ? '' : 'none'
+    const container = document.querySelector('.canvas-content')
+    if (container) {
+      const newHtml = serializeContainer(container, true)
+      setHtmlCode(newHtml)
     }
-  }, [])
+  }, [getRealEl])
+
+  const handleToggleLock = useCallback((path) => {
+    const el = getRealEl(path)
+    if (!el) return
+    const isNowLocked = el.style.pointerEvents === 'none' && el.style.visibility !== 'hidden'
+    el.style.pointerEvents = isNowLocked ? '' : 'none'
+    const container = document.querySelector('.canvas-content')
+    if (container) {
+      const newHtml = serializeContainer(container, true)
+      setHtmlCode(newHtml)
+    }
+  }, [getRealEl])
 
   const handleCanvasSize = useCallback(() => {
     setArtboardModal({ visible: true })
@@ -334,17 +366,23 @@ export default function App() {
     initialLoadDoneRef.current = true
     loadState('svgCode').then((saved) => {
       if (saved && saved !== DEFAULT_CODE) {
-        suppressHistoryRef.current = true
+        skipNextHistoryRef.current = true
         setHtmlCode(saved)
         setHistory([saved])
         setHistoryIndex(0)
-        suppressHistoryRef.current = false
       }
     })
   }, [])
 
   useEffect(() => {
-    if (suppressHistoryRef.current || !initialLoadDoneRef.current) return
+    if (skipNextHistoryRef.current) {
+      skipNextHistoryRef.current = false
+      return
+    }
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
     setHistory((prev) => {
       const trimmed = prev.slice(0, historyIndex + 1)
       const next = [...trimmed, htmlCode]
@@ -366,27 +404,31 @@ export default function App() {
   const performUndo = useCallback(() => {
     if (historyIndex <= 0) return
     const newIndex = historyIndex - 1
-    suppressHistoryRef.current = true
+    skipNextHistoryRef.current = true
     setHtmlCode(history[newIndex])
     setHistoryIndex(newIndex)
-    suppressHistoryRef.current = false
     setParsing(true)
     requestAnimationFrame(() => requestAnimationFrame(() => setParsing(false)))
     const container = document.querySelector('.canvas-content')
-    if (container) container.innerHTML = history[newIndex]
+    if (container) {
+      container.innerHTML = history[newIndex]
+      actionsRef.current?.clearSelections?.()
+    }
   }, [historyIndex, history])
 
   const performRedo = useCallback(() => {
     if (historyIndex >= history.length - 1) return
     const newIndex = historyIndex + 1
-    suppressHistoryRef.current = true
+    skipNextHistoryRef.current = true
     setHtmlCode(history[newIndex])
     setHistoryIndex(newIndex)
-    suppressHistoryRef.current = false
     setParsing(true)
     requestAnimationFrame(() => requestAnimationFrame(() => setParsing(false)))
     const container = document.querySelector('.canvas-content')
-    if (container) container.innerHTML = history[newIndex]
+    if (container) {
+      container.innerHTML = history[newIndex]
+      actionsRef.current?.clearSelections?.()
+    }
   }, [historyIndex, history])
 
   useEffect(() => {
@@ -434,6 +476,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="version-badge">v1.0.9</div>
       <div className="workspace">
         {codePanelVisible && (
           <div className="panel panel-left">
@@ -473,6 +516,8 @@ export default function App() {
                 onLayerSelect={handleLayerSelect}
                 onOpenContextMenu={handleOpenContextMenu}
                 onOpenProperties={handleOpenGroupModal}
+                onToggleVisibility={handleToggleVisibility}
+                onToggleLock={handleToggleLock}
               />
             </div>
             <div className={`left-panel-content${leftPanelTab === 'code' ? '' : ' left-panel-hidden'}`}>
@@ -518,6 +563,7 @@ export default function App() {
             onTransientChange={handleTransientChange}
             brushSize={brushSize}
             onBrushSizeChange={setBrushSize}
+            artboardName="Frame 1"
           />
         </div>
       </div>

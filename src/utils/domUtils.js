@@ -149,6 +149,26 @@ export function getLeafDescendants(container) {
   return leaves
 }
 
+export function getElementByPath(root, path) {
+  let current = root
+  for (const index of path) {
+    let count = 0
+    let found = false
+    for (const child of current.children) {
+      const tag = child.tagName.toLowerCase()
+      if (tag === 'defs' || tag === 'style') continue
+      if (count === index) {
+        current = child
+        found = true
+        break
+      }
+      count++
+    }
+    if (!found) return null
+  }
+  return current
+}
+
 export function getElementPathDescription(el) {
   const parts = []
   let current = el
